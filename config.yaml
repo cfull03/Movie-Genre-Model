@@ -1,0 +1,37 @@
+model:
+  vocab_size: 30522           # Standard BERT vocab size
+  emb_dim: 256                # Embedding dimension used in your model
+  hidden_dim: 256             # Hidden dimension in classifier head
+  num_classes: 19             # Number of genre labels
+  num_heads: 8                # Multi-head attention heads
+  max_seq_length: 128         # Max sequence length for input
+  num_attention_layers: 4     # Number of Transformer encoder layers
+  feedforward_dim: 256        # Feedforward layer size inside encoder
+  num_dropout_samples: 8      # For Monte Carlo Dropout
+  mc_dropout_enabled: false   # Disable dropout during inference
+
+tokenizer:
+  pretrained_model: "bert-base-uncased"  # HuggingFace tokenizer
+
+threshold: 0.5                            # Probability threshold for classification
+
+genre_to_index:
+  Action: 0
+  Adventure: 1
+  Animation: 2
+  Biography: 3
+  Comedy: 4
+  Crime: 5
+  Drama: 6
+  Family: 7
+  Fantasy: 8
+  History: 9
+  Horror: 10
+  Music: 11
+  Mystery: 12
+  Romance: 13
+  Sci-Fi: 14
+  Sport: 15
+  Thriller: 16
+  War: 17
+  Western: 18
