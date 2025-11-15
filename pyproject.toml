@@ -1,0 +1,32 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "descriptions"
+version = "0.0.1"
+description = "We are going to use NLP models to see if we can predict the genres of a movie based on it description."
+authors = [
+  { name = "Christian Fullerton" },
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
+requires-python = "~=3.12.0"
+
+
+[tool.ruff]
+line-length = 99
+src = ["descriptions"]
+include = ["pyproject.toml", "descriptions/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["descriptions"]
+force-sort-within-sections = true
+
