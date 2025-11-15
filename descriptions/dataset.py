@@ -10,24 +10,28 @@ from descriptions.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, INTERIM_DATA_D
 
 app = typer.Typer()
 # ----- PRIVATE HELPER FUNCTIONS -----
-def _basic_cleaning(data: pd.DataFrame) -> pd.DataFrame:
+def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
     logger.info("Performing basic cleaning on dataset...")
-    data = data.dropna()
-    data = data.drop_duplicates()
+    data = df.copy()
 
-    data = data.str.strip()
-   
-    data = data.str.replace(r"[ -]+", "_", regex=True)
-    data = data.str.replace(r"[^a-z0-9_]", "", regex=True)
+    s = data[col].dropna().drop_duplicates()
+    s = s.astype(str).str.strip()
+    s = s.str.replace(r"[ -]+", "_", regex=True)
+    s = s.str.replace(r"[^a-z0-9_]", "", regex=True)
+
+    data = data.loc[s.index].copy()
+    data[col] = s
+
     logger.success("Basic cleaning complete.")
-
     return data
+
 
 def _set_index(data: pd.DataFrame) -> pd.DataFrame:
     logger.info("Setting index on dataset...")
     data = data.set_index("movie_name")
     logger.success("Index set complete.")
     return data
+
 
 
 # ----- PUBLIC API -----
