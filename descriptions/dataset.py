@@ -9,6 +9,9 @@ import pandas as pd
 from descriptions.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR
 
 app = typer.Typer()
+
+__all__ = ["load_data", "to_interim", "to_processed"]
+
 # ----- PRIVATE HELPER FUNCTIONS -----
 def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
     logger.info("Performing basic cleaning on dataset...")
@@ -26,11 +29,11 @@ def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
     return data
 
 
-def _set_index(data: pd.DataFrame) -> pd.DataFrame:
+def _set_index(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Setting index on dataset...")
-    data = data.set_index("movie_name")
+    out = df.set_index("movie_name")
     logger.success("Index set complete.")
-    return data
+    return out
 
 
 
