@@ -138,10 +138,13 @@ def main(
     # ---- Temporary CLI LOGIC FOR PREPPING DATA ----
     logger.info("Loading data from {input_path}...")
     df = load_data(input_path)
+    
     logger.info("Basic cleaning data...")
     df = _basic_cleaning(df)
+
     logger.info("Setting index on data...")
     df = _set_index(df)
+
     logger.info("Saving data to {output_path}...")
     to_interim(df, output_path)
     logger.success("Data saved to {output_path}.")
