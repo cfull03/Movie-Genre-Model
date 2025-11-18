@@ -84,7 +84,6 @@ def generate_targets(
         y = mlb.transform(genres_list)
 
     logger.success("Targets generated.")
-    # ✅ return both targets and fitted binarizer
     return y, mlb
 
 
