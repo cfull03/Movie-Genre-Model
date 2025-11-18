@@ -99,20 +99,42 @@ def main(
 
     data = load_interim()
 
-    logger.info("Prepaing to generate Descriptions feature (X)")
+    logger.info("Preparing to generate Descriptions feature (X)")
     X, vect = generate_descriptions(data)
     logger.success("Successfully generated Descriptions and fitted and transformed the descriptions")
 
-    logger.info("Prepaing to generate Genres feature (y)")
+    logger.info("Preparing to generate Genres feature (y)")
     y, mlb = generate_targets(data)
     logger.success("Successfully generated Genres and fitted and transformed the Genres")
 
+    # Convert X (sparse matrix) to DataFrame with feature names
+    logger.info("Converting features to DataFrame...")
+    X_df = pd.DataFrame(
+        X.toarray(),
+        index=data.index,
+        columns=[f"tfidf_{i}" for i in range(X.shape[1])]
+    )
+    
+    # Convert y (numpy array) to DataFrame with genre names
+    y_df = pd.DataFrame(
+        y,
+        index=data.index,
+        columns=mlb.classes_
+    )
+    
+    # Combine X and y into one DataFrame
+    processed_df = pd.concat([X_df, y_df], axis=1)
+    logger.success("Features and targets combined into DataFrame")
+    
+    # Save to processed_movies.csv
+    logger.info(f"Saving processed data to {output_path}...")
+    to_processed(processed_df, output_path)
+    logger.success(f"Processed data saved to {output_path}")
 
     save_model(vect, 'tdidf_vectorizer')
-    logger.success("Saved the: TDIDF_Vesctorizer")
+    logger.success("Saved the: TDIDF_Vectorizer")
     save_model(mlb, 'genre_binarizer')
     logger.success("Saved the: MultiLabelBinarizer")
-    pass  # ✅ needed so the function body isn't empty
 
 
 if __name__ == "__main__":
