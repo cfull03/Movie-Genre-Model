@@ -29,4 +29,12 @@ from .dataset import (
     load_interim,
     load_model,
     load_processed,
+    save_model,
+    to_interim,
+    to_processed
+)
+
+from .features import (
+    generate_descriptions,
+    generate_targets
 )
