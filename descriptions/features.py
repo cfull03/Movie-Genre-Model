@@ -16,8 +16,6 @@ app = typer.Typer()
 __all__ = [
     "generate_descriptions",
     "generate_targets",
-    "get_vectorizer",
-    "get_multilabel_binarizer",
 ]
 
 # ----- PRIVATE HELPER FUNCTIONS -----
