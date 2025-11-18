@@ -96,7 +96,7 @@ def main(
     tdidf_path: Path = MODELS_DIR / "tdidf_vectorizer.joblib",
 ) -> None:
 
-    data = load_interim()
+    data = load_interim(input_path)
 
     logger.info("Preparing to generate Descriptions feature (X)")
     X, vect = generate_descriptions(data)
@@ -130,8 +130,11 @@ def main(
     to_processed(processed_df, output_path)
     logger.success(f"Processed data saved to {output_path}")
 
+    logger.info("Saving the: TDIDF_Vectorizer")
     save_model(vect, 'tdidf_vectorizer')
     logger.success("Saved the: TDIDF_Vectorizer")
+
+    logger.info("Saving the: MultiLabelBinarizer")
     save_model(mlb, 'genre_binarizer')
     logger.success("Saved the: MultiLabelBinarizer")
 
