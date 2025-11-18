@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 from tqdm import tqdm
@@ -42,19 +43,57 @@ def _set_index(df: pd.DataFrame) -> pd.DataFrame:
 # ----- PUBLIC API -----
 def load_data(input_path: Path = RAW_DATA_DIR / "top_movies.csv") -> pd.DataFrame:
     """Load the raw movies CSV into a DataFrame."""
-    return pd.read_csv(input_path)
+    try:
+        logger.info(f"Loading data from {input_path}...")
+        data = pd.read_csv(input_path)
+        logger.success("Data loaded successfully.")
+    except FileNotFoundError:
+        logger.error(f"File not found at {input_path}")
+        raise FileNotFoundError(f"File not found at {input_path}")
+    except Exception as e:
+        logger.error(f"Error loading data: {e}")
+        raise e
+    return data
+
 
 def load_interim(input_path: Path = INTERIM_DATA_DIR / "top_movies.csv") -> pd.DataFrame:
     """Load the interim movies CSV into a DataFrame."""
-    return pd.read_csv(input_path)
+    try:
+        logger.info(f"Loading data from {input_path}...")
+        data = pd.read_csv(input_path)
+        logger.success("Data loaded successfully.")
+    except FileNotFoundError:
+        logger.error(f"File not found at {input_path}")
+        raise FileNotFoundError(f"File not found at {input_path}")
+    except Exception as e:
+        logger.error(f"Error loading data: {e}")
+    return data
 
 def load_processed(input_path: Path = PROCESSED_DATA_DIR / "top_movies.csv") -> pd.DataFrame:
     """Load the processed movies CSV into a DataFrame."""
-    return pd.read_csv(input_path)
+    try:
+        logger.info(f"Loading data from {input_path}...")
+        data = pd.read_csv(input_path)
+        logger.success("Data loaded successfully.")
+    except FileNotFoundError:
+        logger.error(f"File not found at {input_path}")
+        raise FileNotFoundError(f"File not found at {input_path}")
+    except Exception as e:
+        logger.error(f"Error loading data: {e}")
+    return data
 
-def load_model(input_path: Path = MODELS_DIR):
-    "Load the intended model as a *.joblib"
-    return joblib.load(input_path)
+def load_model(model_name: str) -> Any:
+    input_path = Path(MODELS_DIR / input_path)
+    try:
+        logger.info(f"Loading model from {input_path}...")
+        model = joblib.load(input_path)
+        logger.success("Model loaded successfully.")
+    except FileNotFoundError:
+        logger.error(f"File not found at {input_path}")
+        raise FileNotFoundError(f"File not found at {input_path}")
+    except Exception as e:
+        logger.error(f"Error loading model: {e}")
+    return model
 
 
 def to_interim(
