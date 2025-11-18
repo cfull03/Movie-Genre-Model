@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple  # ✅ needed for type hints
+from typing import Optional, Tuple
 
 from loguru import logger
 from tqdm import tqdm
@@ -7,6 +7,7 @@ import typer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import MultiLabelBinarizer
 import pandas as pd
+import numpy as np
 
 from descriptions.dataset import load_interim, to_processed, save_model
 from descriptions.config import PROCESSED_DATA_DIR, INTERIM_DATA_DIR, MODELS_DIR
