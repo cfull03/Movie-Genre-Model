@@ -11,7 +11,8 @@ from descriptions.config import MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR
 
 app = typer.Typer()
 
-__all__ = ["load_data", "to_interim", "to_processed", "to_model"]
+__all__ = ["load_data", "load_inteirm","load_processed", "load_model",
+            "to_interim", "to_processed", "save_model"]
 
 # ----- PRIVATE HELPER FUNCTIONS -----
 def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
