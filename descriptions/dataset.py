@@ -8,11 +8,11 @@ import typer
 import pandas as pd
 import joblib
 
-from descriptions.config import MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR
+from descriptions.config import MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR
 
 app = typer.Typer()
 
-__all__ = ["load_data", "load_inteirm","load_processed",
+__all__ = ["load_data", "load_interim", "load_processed",
             "to_interim", "to_processed"]
 
 # ----- PRIVATE HELPER FUNCTIONS -----
@@ -56,24 +56,43 @@ def load_data(input_path: Path = RAW_DATA_DIR / "top_movies.csv") -> pd.DataFram
     return data
 
 
-def load_interim(input_path: Path = INTERIM_DATA_DIR / "top_movies.csv") -> pd.DataFrame:
-    """Load the interim movies CSV into a DataFrame."""
+def load_interim(input_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv") -> pd.DataFrame:
+    """
+    Load the interim movies CSV into a DataFrame.
+    
+    If the CSV has an index column (from previous processing), it will be loaded as the index.
+    """
     try:
         logger.info(f"Loading data from {input_path}...")
-        data = pd.read_csv(input_path)
+        # Try to load with index first, fallback to no index
+        try:
+            data = pd.read_csv(input_path, index_col=0)
+        except (ValueError, IndexError):
+            # If index_col=0 fails, load without index
+            data = pd.read_csv(input_path)
         logger.success("Data loaded successfully.")
     except FileNotFoundError:
         logger.error(f"File not found at {input_path}")
         raise FileNotFoundError(f"File not found at {input_path}")
     except Exception as e:
         logger.error(f"Error loading data: {e}")
+        raise e
     return data
 
-def load_processed(input_path: Path = PROCESSED_DATA_DIR / "top_movies.csv") -> pd.DataFrame:
-    """Load the processed movies CSV into a DataFrame."""
+def load_processed(input_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv") -> pd.DataFrame:
+    """
+    Load the processed movies CSV into a DataFrame.
+    
+    If the CSV has an index column (from previous processing), it will be loaded as the index.
+    """
     try:
         logger.info(f"Loading data from {input_path}...")
-        data = pd.read_csv(input_path)
+        # Try to load with index first, fallback to no index
+        try:
+            data = pd.read_csv(input_path, index_col=0)
+        except (ValueError, IndexError):
+            # If index_col=0 fails, load without index
+            data = pd.read_csv(input_path)
         logger.success("Data loaded successfully.")
     except FileNotFoundError:
         logger.error(f"File not found at {input_path}")
@@ -87,20 +106,32 @@ def load_processed(input_path: Path = PROCESSED_DATA_DIR / "top_movies.csv") -> 
 
 def to_interim(
     data: pd.DataFrame,
-    output_path: Path = INTERIM_DATA_DIR / "top_movies.csv",
+    output_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
 ) -> None:
-    """Save data to the interim data directory."""
+    """
+    Save data to the interim data directory.
+    
+    If the DataFrame has a named index, it will be saved as a column.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    data.to_csv(output_path, index=False)
+    # Save with index if it's not the default RangeIndex
+    has_named_index = data.index.name is not None or not isinstance(data.index, pd.RangeIndex)
+    data.to_csv(output_path, index=has_named_index)
 
 
 def to_processed(
     data: pd.DataFrame,
-    output_path: Path = PROCESSED_DATA_DIR / "top_movies.csv",
+    output_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv",
 ) -> None:
-    """Save data to the processed data directory."""
+    """
+    Save data to the processed data directory.
+    
+    If the DataFrame has a named index, it will be saved as a column.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    data.to_csv(output_path, index=False)
+    # Save with index if it's not the default RangeIndex
+    has_named_index = data.index.name is not None or not isinstance(data.index, pd.RangeIndex)
+    data.to_csv(output_path, index=has_named_index)
 
 
 @app.command()
