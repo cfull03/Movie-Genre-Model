@@ -9,7 +9,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import MultiLabelBinarizer
 import pandas as pd
 
-from descriptions.dataset import load_interim, to_processed, save_model, load_model
+from descriptions.dataset import load_interim, to_processed
+from descriptions.modeling.model import save_model, load_model
 from descriptions.config import PROCESSED_DATA_DIR, INTERIM_DATA_DIR, MODELS_DIR
 
 app = typer.Typer()
