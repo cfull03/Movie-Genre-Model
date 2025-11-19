@@ -131,8 +131,6 @@ def save_preprocessors(
 def main(
     input_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
     output_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv",
-    mlb_path: Path = MODELS_DIR / "genre_binarizer.joblib",
-    tdidf_path: Path = MODELS_DIR / "tdidf_vectorizer.joblib",
 ) -> None:
     """Preprocess movie data: generate features and targets, save processed data and fitted preprocessors."""
     data = load_interim(input_path)
@@ -147,16 +145,22 @@ def main(
 
     # Convert X (sparse matrix) to DataFrame with feature names
     logger.info("Converting features to DataFrame...")
+    # Use data index if it exists and is not a default RangeIndex, otherwise create one
+    if hasattr(data, 'index') and not isinstance(data.index, pd.RangeIndex):
+        index = data.index
+    else:
+        index = pd.RangeIndex(len(data))
+    
     X_df = pd.DataFrame(
         X.toarray(),
-        index=data.index,
+        index=index,
         columns=[f"tfidf_{i}" for i in range(X.shape[1])]
     )
     
     # Convert y (numpy array) to DataFrame with genre names
     y_df = pd.DataFrame(
         y,
-        index=data.index,
+        index=index,
         columns=mlb.classes_
     )
     
