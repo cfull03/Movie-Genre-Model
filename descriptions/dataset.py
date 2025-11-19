@@ -12,8 +12,8 @@ from descriptions.config import MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR
 
 app = typer.Typer()
 
-__all__ = ["load_data", "load_inteirm","load_processed", "load_model",
-            "to_interim", "to_processed", "save_model"]
+__all__ = ["load_data", "load_inteirm","load_processed",
+            "to_interim", "to_processed"]
 
 # ----- PRIVATE HELPER FUNCTIONS -----
 def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
@@ -80,20 +80,9 @@ def load_processed(input_path: Path = PROCESSED_DATA_DIR / "top_movies.csv") -> 
         raise FileNotFoundError(f"File not found at {input_path}")
     except Exception as e:
         logger.error(f"Error loading data: {e}")
+        raise e
     return data
 
-def load_model(model_name: str) -> Any:
-    input_path = Path(MODELS_DIR / input_path)
-    try:
-        logger.info(f"Loading model from {input_path}...")
-        model = joblib.load(input_path)
-        logger.success("Model loaded successfully.")
-    except FileNotFoundError:
-        logger.error(f"File not found at {input_path}")
-        raise FileNotFoundError(f"File not found at {input_path}")
-    except Exception as e:
-        logger.error(f"Error loading model: {e}")
-    return model
 
 
 def to_interim(
@@ -113,20 +102,6 @@ def to_processed(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     data.to_csv(output_path, index=False)
 
-def save_model(
-    model, 
-    model_name: str
-) -> None:
-
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # ensure it has an extension
-    if not model_name.endswith(".joblib"):
-        model_name = f"{model_name}.joblib"
-
-    output_path = MODELS_DIR / model_name
-    joblib.dump(model, output_path)
-
 
 @app.command()
 def main(
@@ -136,7 +111,7 @@ def main(
     # ----------------------------------------------
 ):
     # ---- Temporary CLI LOGIC FOR PREPPING DATA ----
-    logger.info("Loading data from {input_path}...")
+    logger.info(f"Loading data from {input_path}...")
     df = load_data(input_path)
     
     logger.info("Basic cleaning data...")
@@ -145,9 +120,9 @@ def main(
     logger.info("Setting index on data...")
     df = _set_index(df)
 
-    logger.info("Saving data to {output_path}...")
+    logger.info(f"Saving data to {output_path}...")
     to_interim(df, output_path)
-    logger.success("Data saved to {output_path}.")
+    logger.success(f"Data saved to {output_path}.")
     # ----------------------------------------------
 
 if __name__ == "__main__":
