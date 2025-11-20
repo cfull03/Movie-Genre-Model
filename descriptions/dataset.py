@@ -20,10 +20,22 @@ def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
     logger.info("Performing basic cleaning on dataset...")
     data = df.copy()
 
-    s = data[col].dropna().drop_duplicates()
-    s = s.astype(str).str.strip()
-    s = s.str.replace(r"[ -]+", "_", regex=True)
-    s = s.str.replace(r"[^a-z0-9_]", "", regex=True)
+    with tqdm(total=4, desc="Cleaning data", unit="step") as pbar:
+        pbar.set_description("Dropping duplicates and nulls")
+        s = data[col].dropna().drop_duplicates()
+        pbar.update(1)
+        
+        pbar.set_description("Converting to string and stripping")
+        s = s.astype(str).str.strip()
+        pbar.update(1)
+        
+        pbar.set_description("Replacing spaces and hyphens")
+        s = s.str.replace(r"[ -]+", "_", regex=True)
+        pbar.update(1)
+        
+        pbar.set_description("Removing special characters")
+        s = s.str.replace(r"[^a-z0-9_]", "", regex=True)
+        pbar.update(1)
 
     data = data.loc[s.index].copy()
     data[col] = s
