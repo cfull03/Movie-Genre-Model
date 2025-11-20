@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 
 from descriptions.config import MODELS_DIR, PROCESSED_DATA_DIR
 from descriptions.dataset import load_processed
-from descriptions.modeling.model import build_model, save_model
+from descriptions.modeling.model import build_model, save_model, get_model_name
 from descriptions.modeling.preprocess import load_preprocessors
 
 app = typer.Typer()
@@ -163,6 +163,14 @@ def main(
         # Train model
         logger.info("Starting model training...")
         model = train_model(X_train, y_train)
+        logger.success("Model training complete!")
+        
+        # Generate model name based on base classifier if using default path
+        default_model_path = MODELS_DIR / "model.joblib"
+        if model_path.resolve() == default_model_path.resolve() or model_path.name == "model.joblib":
+            model_name = get_model_name(model)
+            model_path = MODELS_DIR / f"{model_name}.joblib"
+            logger.info(f"Generated model name: {model_name}")
         
         # Save model
         logger.info(f"Saving trained model to {model_path}...")
