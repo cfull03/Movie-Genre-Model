@@ -67,6 +67,24 @@ data: requirements
 	$(PYTHON_INTERPRETER) descriptions/dataset.py
 
 
+.PHONY: preprocess
+preprocess: data
+	$(PYTHON_INTERPRETER) descriptions/modeling/preprocess.py
+
+
+.PHONY: train
+train: preprocess
+	$(PYTHON_INTERPRETER) descriptions/modeling/train.py
+
+## Evaluate model (optionally specify MODEL_PATH, e.g., make evaluate MODEL_PATH=logisticregression.joblib)
+.PHONY: evaluate
+evaluate: train
+ifdef MODEL_PATH
+	$(PYTHON_INTERPRETER) descriptions/modeling/evaluate.py --model-path $(MODEL_PATH)
+else
+	$(PYTHON_INTERPRETER) descriptions/modeling/evaluate.py
+endif
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
