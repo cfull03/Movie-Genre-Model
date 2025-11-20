@@ -136,8 +136,32 @@ def save_preprocessors(
 def main(
     input_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
     output_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv",
+    force: bool = False,
 ) -> None:
-    """Preprocess movie data: generate features and targets, save processed data and fitted preprocessors."""
+    """
+    Preprocess movie data: generate features and targets, save processed data and fitted preprocessors.
+    
+    Args:
+        input_path: Path to cleaned interim data CSV file
+        output_path: Path where processed data will be saved
+        force: If True, reprocess even if outputs already exist (default: False)
+    """
+    # Check if outputs already exist
+    vectorizer_path = MODELS_DIR / "tfidf_vectorizer.joblib"
+    mlb_path = MODELS_DIR / "genre_binarizer.joblib"
+    
+    outputs_exist = (
+        output_path.exists() and 
+        vectorizer_path.exists() and 
+        mlb_path.exists()
+    )
+    
+    if outputs_exist and not force:
+        logger.info(f"Processed data already exists at {output_path}")
+        logger.info(f"Preprocessors already exist at {vectorizer_path} and {mlb_path}")
+        logger.info("Skipping preprocessing. Use --force to reprocess.")
+        return
+    
     data = load_interim(input_path)
 
     logger.info("Preparing to generate Descriptions feature (X)")
