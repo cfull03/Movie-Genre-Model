@@ -66,16 +66,12 @@ def split_data(
     
     # Extract features
     X = data[feature_columns]
-    
-    # Extract labels and transform through MLB to ensure proper formatting
-    # Get genre columns in the correct order (as defined by MLB)
     y_df = data[genre_columns]
     
-    # Convert to list of lists format for MLB transform
-    # Each row should be a list of genre names that are present (value == 1)
     y_list = []
-    for idx in y_df.index:
-        genres = [col for col in genre_columns if y_df.loc[idx, col] == 1]
+    for i in range(len(y_df)):
+        row = y_df.iloc[i]
+        genres = [col for col in genre_columns if row[col] == 1]
         y_list.append(genres)
     
     # Transform through MLB to ensure proper binary encoding
