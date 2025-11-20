@@ -1,4 +1,10 @@
-from __future__ import annotations 
+"""Modeling Module.
+
+This module provides tools for building, training, evaluating, and managing
+machine learning models for movie genre classification.
+"""
+
+from __future__ import annotations
 
 # Resolve package version from installed metadata.
 try:  # Why: avoid import-time failure when running from source/uninstalled.
@@ -10,25 +16,53 @@ except Exception:  # pragma: no cover
 try:
     __version__ = version("modeling") if version else "0.0.0"
 except PackageNotFoundError:
-    __version__ = "0.0.0" 
+    __version__ = "0.0.0"
 
-from .model import build_model, build_pipeline, save_model, load_model, get_model_name, get_params
-from .train import train_model, split_data
-from .preprocess import build_preprocessor, load_preprocessors, save_preprocessors
-from .evaluate import evaluate_model, save_metrics
+# Model building and management
+from .model import (
+    build_model,
+    build_pipeline,
+    get_model_name,
+    get_params,
+    load_model,
+    save_model,
+)
+
+# Preprocessing utilities
+from .preprocess import (
+    build_preprocessor,
+    load_preprocessors,
+    save_preprocessors,
+)
+
+# Training utilities
+from .train import (
+    split_data,
+    train_model,
+)
+
+# Evaluation utilities
+from .evaluate import (
+    evaluate_model,
+    save_metrics,
+)
 
 __all__ = [
+    # Model building and management
     "build_model",
     "build_pipeline",
+    "get_model_name",
+    "get_params",
+    "load_model",
+    "save_model",
+    # Preprocessing
     "build_preprocessor",
     "load_preprocessors",
     "save_preprocessors",
-    "save_model",
-    "load_model",
+    # Training
+    "split_data",
     "train_model",
-    "get_model_name",
-    "get_params",
+    # Evaluation
     "evaluate_model",
     "save_metrics",
-    "split_data", 
 ]
