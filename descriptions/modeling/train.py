@@ -102,16 +102,22 @@ def train_model(
     """
     logger.info(f"Training model with {len(X_train)} samples...")
     
-    # Build model (no vectorizer needed since features are already TF-IDF transformed)
-    logger.info("Building model...")
-    model = build_model()
+    with tqdm(total=3, desc="Training model", unit="step") as pbar:
+        # Build model (no vectorizer needed since features are already TF-IDF transformed)
+        pbar.set_description("Building model")
+        model = build_model()
+        pbar.update(1)
+        
+        pbar.set_description("Converting to numpy array")
+        # Convert DataFrame to numpy array for sklearn
+        X_train_array = X_train.values
+        pbar.update(1)
+        
+        pbar.set_description("Fitting model")
+        # y_train is already a numpy array from MLB transform
+        model.fit(X_train_array, y_train)
+        pbar.update(1)
     
-    logger.info("Fitting model on training data...")
-    # Convert DataFrame to numpy array for sklearn
-    X_train_array = X_train.values
-    
-    # y_train is already a numpy array from MLB transform
-    model.fit(X_train_array, y_train)
     logger.success("Model training complete!")
     
     return model
