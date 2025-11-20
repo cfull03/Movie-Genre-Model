@@ -152,7 +152,22 @@ def main(
     input_path: Path = RAW_DATA_DIR / "top_movies.csv",
     output_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
     # ----------------------------------------------
+    force: bool = False,
 ):
+    """
+    Process raw data into cleaned interim data.
+    
+    Args:
+        input_path: Path to raw data CSV file
+        output_path: Path where cleaned data will be saved
+        force: If True, reprocess even if output already exists (default: False)
+    """
+    # Check if output already exists
+    if output_path.exists() and not force:
+        logger.info(f"Cleaned data already exists at {output_path}")
+        logger.info("Skipping data processing. Use --force to reprocess.")
+        return
+    
     # ---- Temporary CLI LOGIC FOR PREPPING DATA ----
     logger.info(f"Loading data from {input_path}...")
     df = load_data(input_path)
