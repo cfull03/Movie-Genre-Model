@@ -12,9 +12,10 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0" 
 
-from .model import build_model, build_pipeline, save_model, load_model
-from .train import train_model
+from .model import build_model, build_pipeline, save_model, load_model, get_model_name, get_params
+from .train import train_model, split_data
 from .preprocess import build_preprocessor, load_preprocessors, save_preprocessors
+from .evaluate import evaluate_model, save_metrics
 
 __all__ = [
     "build_model",
@@ -25,4 +26,9 @@ __all__ = [
     "save_model",
     "load_model",
     "train_model",
+    "get_model_name",
+    "get_params",
+    "evaluate_model",
+    "save_metrics",
+    "split_data", 
 ]
