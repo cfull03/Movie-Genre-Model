@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Dict
 
 import joblib
 from loguru import logger
@@ -10,7 +10,7 @@ from sklearn.linear_model import LogisticRegression
 from descriptions.config import MODELS_DIR
 from .preprocess import build_preprocessor, load_preprocessors
 
-__all__ = ["build_model", "build_pipeline", "save_model", "load_model"]
+__all__ = ["build_model", "build_pipeline", "save_model", "load_model", "get_params", "get_model_name"]
 
 
 # ---- PUBLIC API ----
@@ -201,3 +201,93 @@ def build_pipeline(
     
     logger.info("Pipeline built successfully with vectorizer and model steps")
     return pipeline
+
+
+def get_params(model: Any) -> Dict[str, Any]:
+    """
+    Extract key parameters from a model's base estimator.
+    
+    For OneVsRestClassifier models, extracts parameters from the underlying
+    base estimator (e.g., LogisticRegression).
+    
+    Args:
+        model: Model object (OneVsRestClassifier, Pipeline, or base estimator)
+    
+    Returns:
+        Dictionary of parameter names and values
+    """
+    # Handle Pipeline objects - extract the model step
+    if isinstance(model, Pipeline):
+        # Try to find a 'model' step
+        if 'model' in model.named_steps:
+            model = model.named_steps['model']
+        else:
+            # Use the last step if no 'model' step found
+            model = model.steps[-1][1]
+    
+    # Extract base estimator from OneVsRestClassifier
+    if isinstance(model, OneVsRestClassifier):
+        base_estimator = model.estimator
+    elif hasattr(model, 'estimator'):
+        base_estimator = model.estimator
+    elif hasattr(model, 'base_estimator'):
+        base_estimator = model.base_estimator
+    else:
+        # Use the model itself if it's already a base estimator
+        base_estimator = model
+    
+    # Extract key parameters
+    params = {}
+    
+    # Common parameters for LogisticRegression and similar classifiers
+    if hasattr(base_estimator, 'C'):
+        params['C'] = base_estimator.C
+    if hasattr(base_estimator, 'penalty'):
+        params['penalty'] = base_estimator.penalty
+    if hasattr(base_estimator, 'solver'):
+        params['solver'] = base_estimator.solver
+    if hasattr(base_estimator, 'max_iter'):
+        params['max_iter'] = base_estimator.max_iter
+    if hasattr(base_estimator, 'random_state'):
+        params['random_state'] = base_estimator.random_state
+    
+    return params
+
+
+def get_model_name(model: Any) -> str:
+    """
+    Generate a model name based on the base classifier and its key parameters.
+    
+    Args:
+        model: Model object (OneVsRestClassifier, Pipeline, or base estimator)
+    
+    Returns:
+        String name for the model file (without extension)
+    """
+    # Handle Pipeline objects - extract the model step
+    if isinstance(model, Pipeline):
+        # Try to find a 'model' step
+        if 'model' in model.named_steps:
+            model = model.named_steps['model']
+        else:
+            # Use the last step if no 'model' step found
+            model = model.steps[-1][1]
+    
+    # Extract base estimator from OneVsRestClassifier
+    if isinstance(model, OneVsRestClassifier):
+        base_estimator = model.estimator
+    elif hasattr(model, 'estimator'):
+        base_estimator = model.estimator
+    elif hasattr(model, 'base_estimator'):
+        base_estimator = model.base_estimator
+    else:
+        # Use the model itself if it's already a base estimator
+        base_estimator = model
+    
+    # Get the classifier class name
+    classifier_name = base_estimator.__class__.__name__
+    model_name = classifier_name
+    
+    # Convert to lowercase and replace special characters
+    model_name = model_name.lower().replace(" ", "_")
+    return model_name
