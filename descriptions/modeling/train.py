@@ -129,6 +129,7 @@ def main(
     model_path: Path = MODELS_DIR / "model.joblib",
     test_size: float = 0.2,
     random_state: int = 42,
+    force: bool = False,
 ) -> None:
     """
     Train a movie genre classification model.
@@ -141,8 +142,29 @@ def main(
         model_path: Path where the trained model will be saved
         test_size: Proportion of data to use for testing (default: 0.2)
         random_state: Random seed for reproducibility (default: 42)
+        force: If True, retrain even if model already exists (default: False)
     """
     try:
+        # Determine final model path early to check if it exists
+        default_model_path = MODELS_DIR / "model.joblib"
+        is_default_path = model_path.resolve() == default_model_path.resolve() or model_path.name == "model.joblib"
+        
+        # Build model to get its name (needed for default path)
+        # This is fast since we're just creating an untrained model
+        temp_model = build_model()
+        if is_default_path:
+            model_name = get_model_name(temp_model)
+            final_model_path = MODELS_DIR / f"{model_name}.joblib"
+            logger.info(f"Generated model name: {model_name}")
+        else:
+            final_model_path = model_path
+        
+        # Check if model already exists (before loading data)
+        if final_model_path.exists() and not force:
+            logger.info(f"Model already exists at {final_model_path}")
+            logger.info("Skipping training. Use --force to retrain.")
+            return
+        
         # Load processed data
         logger.info(f"Loading processed data from {processed_path}...")
         data = load_processed(processed_path)
@@ -167,17 +189,10 @@ def main(
         model = train_model(X_train, y_train)
         logger.success("Model training complete!")
         
-        # Generate model name based on base classifier if using default path
-        default_model_path = MODELS_DIR / "model.joblib"
-        if model_path.resolve() == default_model_path.resolve() or model_path.name == "model.joblib":
-            model_name = get_model_name(model)
-            model_path = MODELS_DIR / f"{model_name}.joblib"
-            logger.info(f"Generated model name: {model_name}")
-        
         # Save model
-        logger.info(f"Saving trained model to {model_path}...")
-        save_model(model, model_path)
-        logger.success(f"Model saved successfully to {model_path}")
+        logger.info(f"Saving trained model to {final_model_path}...")
+        save_model(model, final_model_path)
+        logger.success(f"Model saved successfully to {final_model_path}")
         
         logger.success("Training pipeline completed successfully!")
         
