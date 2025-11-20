@@ -10,8 +10,13 @@ from sklearn.preprocessing import MultiLabelBinarizer
 import pandas as pd
 
 from descriptions.dataset import load_interim, to_processed
-from descriptions.modeling.model import save_model, load_model
 from descriptions.config import PROCESSED_DATA_DIR, INTERIM_DATA_DIR, MODELS_DIR
+
+# Handle both relative (when imported as module) and absolute (when run as script) imports
+try:
+    from .model import save_model, load_model
+except ImportError:
+    from descriptions.modeling.model import save_model, load_model
 
 app = typer.Typer()
 
@@ -144,18 +149,25 @@ def main(
     logger.success("Successfully generated Genres and fitted and transformed the Genres")
 
     # Convert X (sparse matrix) to DataFrame with feature names
-    logger.info("Converting features to DataFrame...")
+    logger.info(f"Converting sparse matrix to DataFrame (shape: {X.shape})...")
+    logger.info("This may take a while for large matrices...")
     # Use data index if it exists and is not a default RangeIndex, otherwise create one
     if hasattr(data, 'index') and not isinstance(data.index, pd.RangeIndex):
         index = data.index
     else:
         index = pd.RangeIndex(len(data))
     
+    # Convert sparse matrix to dense array (this can be slow for large matrices)
+    logger.info("Converting sparse matrix to dense array...")
+    X_dense = X.toarray()
+    logger.info("Dense array conversion complete. Creating DataFrame...")
+    
     X_df = pd.DataFrame(
-        X.toarray(),
+        X_dense,
         index=index,
         columns=[f"tfidf_{i}" for i in range(X.shape[1])]
     )
+    logger.info("DataFrame created successfully.")
     
     # Convert y (numpy array) to DataFrame with genre names
     y_df = pd.DataFrame(
@@ -165,11 +177,13 @@ def main(
     )
     
     # Combine X and y into one DataFrame
+    logger.info("Combining features and targets into single DataFrame...")
     processed_df = pd.concat([X_df, y_df], axis=1)
-    logger.success("Features and targets combined into DataFrame")
+    logger.success(f"Features and targets combined into DataFrame (shape: {processed_df.shape})")
     
     # Save to processed_movies.csv
     logger.info(f"Saving processed data to {output_path}...")
+    logger.info("This may take a while for large datasets...")
     to_processed(processed_df, output_path)
     logger.success(f"Processed data saved to {output_path}")
 
