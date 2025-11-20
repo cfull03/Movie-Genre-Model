@@ -208,7 +208,9 @@ def main(
     # Save to processed_movies.csv
     logger.info(f"Saving processed data to {output_path}...")
     logger.info("This may take a while for large datasets...")
-    to_processed(processed_df, output_path)
+    with tqdm(total=1, desc="Saving processed data", unit="file") as pbar:
+        to_processed(processed_df, output_path)
+        pbar.update(1)
     logger.success(f"Processed data saved to {output_path}")
 
     logger.info("Saving fitted preprocessors...")
