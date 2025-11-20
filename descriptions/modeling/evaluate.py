@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import typer
 from loguru import logger
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, hamming_loss, jaccard_score
 
 from descriptions.config import MODELS_DIR, PROCESSED_DATA_DIR
 from descriptions.dataset import load_processed
@@ -39,7 +39,7 @@ def _find_model_files() -> List[Path]:
     return sorted(model_files)
 
 
-def find_default_model() -> Optional[Path]:
+def _find_default_model() -> Optional[Path]:
     """
     Find the default model file to use for evaluation.
     
@@ -56,7 +56,7 @@ def find_default_model() -> Optional[Path]:
         return default_model
     
     # Otherwise, find any scikit-learn model file
-    model_files = find_model_files()
+    model_files = _find_model_files()
     if model_files:
         return model_files[0]
     
@@ -67,10 +67,8 @@ def display_metrics(metrics: dict) -> None:
     logger.info("=" * 60)
     logger.info("📊 MODEL EVALUATION METRICS")
     logger.info("=" * 60)
-    logger.info(f"  Precision:  {metrics['precision']:.4f} ({metrics['precision']*100:.2f}%)")
-    logger.info(f"  Recall:     {metrics['recall']:.4f} ({metrics['recall']*100:.2f}%)")
-    logger.info(f"  F1 Score:   {metrics['f1']:.4f} ({metrics['f1']*100:.2f}%)")
-    logger.info(f"  Accuracy:   {metrics['accuracy']:.4f} ({metrics['accuracy']*100:.2f}%)")
+    for metric, value in metrics.items():
+        logger.info(f"  {metric.capitalize()}: {value:.4f}")
     logger.info("=" * 60)
 
 
@@ -95,16 +93,14 @@ def evaluate_model(model: Any, X: np.ndarray, y: np.ndarray) -> dict:
     
     # For multi-label classification, use average='micro' or 'macro'
     # Using 'micro' which calculates metrics globally
-    precision = precision_score(y, y_pred, average='micro', zero_division=0)
-    recall = recall_score(y, y_pred, average='micro', zero_division=0)
+    hamming = hamming_loss(y, y_pred)
     f1 = f1_score(y, y_pred, average='micro', zero_division=0)
-    accuracy = accuracy_score(y, y_pred)
+    jaccard = jaccard_score(y, y_pred, average='micro', zero_division=0)
     
     return {
-        "precision": float(precision),
-        "recall": float(recall),
+        "hamming_loss": float(hamming),
         "f1": float(f1),
-        "accuracy": float(accuracy),
+        "jaccard": float(jaccard),
     }
 
 
