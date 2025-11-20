@@ -8,7 +8,6 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn.linear_model import LogisticRegression
 
 from descriptions.config import MODELS_DIR
-from .preprocess import build_preprocessor, load_preprocessors
 
 __all__ = ["build_model", "build_pipeline", "save_model", "load_model", "get_params", "get_model_name"]
 
@@ -181,6 +180,9 @@ def build_pipeline(
         >>> pipeline = build_pipeline(use_fitted_preprocessor=True)
         >>> predictions = pipeline.predict(X_test)
     """
+    # Import here to avoid circular import with preprocess.py
+    from .preprocess import build_preprocessor, load_preprocessors
+    
     if use_fitted_preprocessor:
         vectorizer, mlb = load_preprocessors(vectorizer_path, mlb_path)
         # Note: mlb is loaded but not used in pipeline - it's for label encoding/decoding
