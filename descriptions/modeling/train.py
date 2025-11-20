@@ -4,6 +4,7 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 from loguru import logger
+from tqdm import tqdm
 import typer
 from sklearn.model_selection import train_test_split
 

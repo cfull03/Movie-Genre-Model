@@ -4,6 +4,7 @@ from scipy.sparse import csr_matrix
 import numpy as np
 
 from loguru import logger
+from tqdm import tqdm
 import typer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import MultiLabelBinarizer
