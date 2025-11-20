@@ -1,6 +1,9 @@
 # Data
 /data/
 
+# Machine learning models (binary files)
+*.joblib
+
 # Mac OS-specific storage files
 .DS_Store
 
@@ -189,3 +192,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
