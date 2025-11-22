@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -7,10 +7,12 @@ from loguru import logger
 from tqdm import tqdm
 import typer
 from sklearn.model_selection import train_test_split
+import mlflow
+import mlflow.sklearn
 
 from descriptions.config import MODELS_DIR, PROCESSED_DATA_DIR
 from descriptions.dataset import load_processed
-from descriptions.modeling.model import build_model, save_model, get_model_name
+from descriptions.modeling.model import build_model, save_model, get_model_name, get_params
 from descriptions.modeling.preprocess import load_preprocessors
 
 app = typer.Typer()
@@ -90,6 +92,7 @@ def split_data(
 def train_model(
     X_train: pd.DataFrame,
     y_train: np.ndarray,
+    model_params: Optional[dict] = None,
 ) -> object:
     """
     Train the movie genre classification model.
@@ -97,6 +100,7 @@ def train_model(
     Args:
         X_train: Training features (TF-IDF features as DataFrame)
         y_train: Training labels (genre binary labels as numpy array from MLB)
+        model_params: Optional dictionary of model hyperparameters (C, penalty, solver, max_iter)
     
     Returns:
         Trained model
@@ -106,7 +110,9 @@ def train_model(
     with tqdm(total=3, desc="Training model", unit="step") as pbar:
         # Build model (no vectorizer needed since features are already TF-IDF transformed)
         pbar.set_description("Building model")
-        model = build_model()
+        if model_params is None:
+            model_params = {}
+        model = build_model(**model_params)
         pbar.update(1)
         
         pbar.set_description("Converting to numpy array")
@@ -131,6 +137,13 @@ def main(
     test_size: float = 0.2,
     random_state: int = 42,
     force: bool = False,
+    experiment_name: str = "movie-genre-classification",
+    run_name: Optional[str] = None,
+    # Model hyperparameters
+    C: float = 1.0,
+    penalty: str = "l1",
+    solver: str = "liblinear",
+    max_iter: int = 1000,
 ) -> None:
     """
     Train a movie genre classification model.
@@ -144,68 +157,117 @@ def main(
         test_size: Proportion of data to use for testing (default: 0.2)
         random_state: Random seed for reproducibility (default: 42)
         force: If True, retrain even if model already exists (default: False)
+        experiment_name: MLflow experiment name (default: "movie-genre-classification")
+        run_name: Optional name for MLflow run. If None, auto-generated from hyperparameters
+        C: Inverse of regularization strength (default: 1.0)
+        penalty: Type of regularization penalty - 'l1' or 'l2' (default: 'l1')
+        solver: Algorithm to use for optimization (default: 'liblinear')
+        max_iter: Maximum number of iterations for convergence (default: 1000)
     """
+    # Set up MLflow experiment
     try:
-        # Determine final model path early to check if it exists
-        default_model_path = MODELS_DIR / "model.joblib"
-        is_default_path = model_path.resolve() == default_model_path.resolve() or model_path.name == "model.joblib"
-        
-        # Build model to get its name (needed for default path)
-        # This is fast since we're just creating an untrained model
-        temp_model = build_model()
-        if is_default_path:
-            model_name = get_model_name(temp_model)
-            final_model_path = MODELS_DIR / f"{model_name}.joblib"
-            logger.info(f"Generated model name: {model_name}")
-        else:
-            final_model_path = model_path
-        
-        # Check if model already exists (before loading data)
-        if final_model_path.exists() and not force:
-            logger.info(f"Model already exists at {final_model_path}")
-            logger.info("Skipping training. Use --force to retrain.")
-            return
-        
-        # Load processed data
-        logger.info(f"Loading processed data from {processed_path}...")
-        data = load_processed(processed_path)
-        logger.success(f"Loaded {len(data)} samples from processed data")
-        
-        # Split features and labels (labels will be transformed through MLB)
-        logger.info("Splitting data into features and labels...")
-        X, y, mlb = split_data(data)
-        logger.success("Data split successfully (labels transformed through MultiLabelBinarizer)")
-        
-        # Split into train and test sets
-        logger.info(f"Splitting data: {1-test_size:.0%} train, {test_size:.0%} test")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state, shuffle=True
-        )
-        logger.success(
-            f"Data split: {len(X_train)} training samples, {len(X_test)} test samples"
-        )
-        
-        # Train model
-        logger.info("Starting model training...")
-        model = train_model(X_train, y_train)
-        logger.success("Model training complete!")
-        
-        # Save model
-        logger.info(f"Saving trained model to {final_model_path}...")
-        save_model(model, final_model_path)
-        logger.success(f"Model saved successfully to {final_model_path}")
-        
-        logger.success("Training pipeline completed successfully!")
-        
-    except FileNotFoundError as e:
-        logger.error(f"File not found: {e}")
-        raise
-    except ValueError as e:
-        logger.error(f"Value error: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error during training: {e}")
-        raise
+        experiment_id = mlflow.create_experiment(experiment_name)
+        logger.info(f"Created new MLflow experiment: {experiment_name}")
+    except Exception:
+        mlflow.set_experiment(experiment_name)
+        logger.info(f"Using existing MLflow experiment: {experiment_name}")
+    
+    # Generate run name from hyperparameters if not provided
+    if run_name is None:
+        run_name = f"C{C}_penalty-{penalty}_solver-{solver}"
+    
+    # Start MLflow run - each unique parameter combination creates a new run
+    with mlflow.start_run(run_name=run_name):
+        try:
+            # Determine final model path early to check if it exists
+            default_model_path = MODELS_DIR / "model.joblib"
+            is_default_path = model_path.resolve() == default_model_path.resolve() or model_path.name == "model.joblib"
+            
+            # Build model to get its name (needed for default path)
+            # This is fast since we're just creating an untrained model
+            temp_model = build_model()
+            if is_default_path:
+                model_name = get_model_name(temp_model)
+                final_model_path = MODELS_DIR / f"{model_name}.joblib"
+                logger.info(f"Generated model name: {model_name}")
+            else:
+                final_model_path = model_path
+            
+            # Log model parameters to MLflow
+            model_params = get_params(temp_model)
+            for key, value in model_params.items():
+                mlflow.log_param(f"model_{key}", value)
+            mlflow.set_tag("model_type", "LogisticRegression-OneVsRest")
+            mlflow.set_tag("task", "multi-label-classification")
+            
+            # Check if model already exists (before loading data)
+            if final_model_path.exists() and not force:
+                logger.info(f"Model already exists at {final_model_path}")
+                logger.info("Skipping training. Use --force to retrain.")
+                return
+            
+            # Load processed data
+            logger.info(f"Loading processed data from {processed_path}...")
+            data = load_processed(processed_path)
+            logger.success(f"Loaded {len(data)} samples from processed data")
+            
+            # Log data info to MLflow
+            mlflow.log_param("data_path", str(processed_path))
+            mlflow.log_param("total_samples", len(data))
+            
+            # Split features and labels (labels will be transformed through MLB)
+            logger.info("Splitting data into features and labels...")
+            X, y, mlb = split_data(data)
+            logger.success("Data split successfully (labels transformed through MultiLabelBinarizer)")
+            
+            # Log preprocessing parameters to MLflow
+            feature_columns = [col for col in X.columns if col.startswith("tfidf_")]
+            mlflow.log_param("preprocessing_max_features", 10000)
+            mlflow.log_param("preprocessing_ngram_range", "(1, 2)")
+            mlflow.log_param("preprocessing_stop_words", "english")
+            
+            # Split into train and test sets
+            logger.info(f"Splitting data: {1-test_size:.0%} train, {test_size:.0%} test")
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, random_state=random_state, shuffle=True
+            )
+            logger.success(
+                f"Data split: {len(X_train)} training samples, {len(X_test)} test samples"
+            )
+            
+            # Log training info to MLflow
+            mlflow.log_param("train_size", len(X_train))
+            mlflow.log_param("test_size", len(X_test))
+            mlflow.log_param("n_features", len(feature_columns))
+            mlflow.log_param("n_classes", len(mlb.classes_))
+            mlflow.log_param("test_size_ratio", test_size)
+            mlflow.log_param("random_state", random_state)
+            
+            # Train model
+            logger.info("Starting model training...")
+            model = train_model(X_train, y_train)
+            logger.success("Model training complete!")
+            
+            # Save model
+            logger.info(f"Saving trained model to {final_model_path}...")
+            save_model(model, final_model_path)
+            logger.success(f"Model saved successfully to {final_model_path}")
+            
+            # Save model to MLflow
+            mlflow.sklearn.log_model(model, "model")
+            logger.info(f"Model logged to MLflow run: {mlflow.active_run().info.run_id}")
+            
+            logger.success("Training pipeline completed successfully!")
+            
+        except FileNotFoundError as e:
+            logger.error(f"File not found: {e}")
+            raise
+        except ValueError as e:
+            logger.error(f"Value error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during training: {e}")
+            raise
 
 
 if __name__ == "__main__":
