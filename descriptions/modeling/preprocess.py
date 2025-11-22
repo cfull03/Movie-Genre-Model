@@ -88,7 +88,9 @@ def _generate_descriptions(
 # ----- PUBLIC API -----
 def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer]:
     """Build and return the preprocessing components (TfidfVectorizer and MultiLabelBinarizer)."""
-    vectorizer = TfidfVectorizer(stop_words="english")
+    vectorizer = TfidfVectorizer(max_features=10000, 
+                                stop_words="english", 
+                                ngram_range=(1, 2))
     mlb = MultiLabelBinarizer()
     return vectorizer, mlb
 
