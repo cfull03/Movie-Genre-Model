@@ -25,6 +25,18 @@ clean:
 	find . -type f -name "*.py[co]" -delete
 	find . -type d -name "__pycache__" -delete
 
+.PHONY: reset
+reset: clean
+	find . -type f -name "*.joblib" -delete
+	find . -type d -name "models" -delete
+	find . -type d -name "data" -delete
+	find . -type d -name "reports" -delete
+	find . -type d -name "figures" -delete
+	find . -type d -name "notebooks" -delete
+	find . -type d -name "tests" -delete
+	find . -type d -name "docs" -delete
+	find . -type d -name "examples" -delete
+
 
 ## Lint using ruff (use `make format` to do formatting)
 .PHONY: lint

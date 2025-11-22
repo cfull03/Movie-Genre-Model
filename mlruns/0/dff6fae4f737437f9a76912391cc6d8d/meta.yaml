@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/christianfullerton/Developer/Python%20Workspace/movie_genre_model/mlruns/0/dff6fae4f737437f9a76912391cc6d8d/artifacts
+end_time: 1763778872948
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: dff6fae4f737437f9a76912391cc6d8d
+run_name: industrious-bee-39
+run_uuid: dff6fae4f737437f9a76912391cc6d8d
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1763778872928
+status: 3
+tags: []
+user_id: christianfullerton
