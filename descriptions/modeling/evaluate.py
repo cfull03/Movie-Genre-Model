@@ -7,6 +7,7 @@ import pandas as pd
 import typer
 from loguru import logger
 from sklearn.metrics import f1_score, hamming_loss, jaccard_score
+import mlflow
 
 from descriptions.config import MODELS_DIR, PROCESSED_DATA_DIR
 from descriptions.dataset import load_processed
@@ -122,6 +123,8 @@ def main(
     model_path: Optional[str] = typer.Option(None, help="Path to the saved model file. If not provided, automatically finds a scikit-learn model."),
     data_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv",
     metrics_path: Optional[Path] = None,
+    experiment_name: str = "movie-genre-classification",
+    run_id: Optional[str] = None,
 ):
     """
     Evaluate a trained model on test data and save metrics.
@@ -130,71 +133,108 @@ def main(
         model_path: Path to the saved model file (as string). If None, automatically finds a scikit-learn model.
         data_path: Path to the processed data CSV file
         metrics_path: Path where metrics will be saved. If None, uses metrics_{model_name}.json
+        experiment_name: MLflow experiment name (default: "movie-genre-classification")
+        run_id: Optional MLflow run ID to log metrics to. If None and no active run, starts new run.
     """
-    # Convert string to Path if provided
-    model_path_obj: Optional[Path] = None
-    if model_path:
-        model_path_obj = Path(model_path)
+    # Set up MLflow if run_id provided or if no active run exists
+    if run_id:
+        mlflow.start_run(run_id=run_id)
+        logger.info(f"Continuing MLflow run: {run_id}")
+    elif mlflow.active_run() is None:
+        # Set experiment and start new run
+        try:
+            mlflow.set_experiment(experiment_name)
+        except Exception:
+            mlflow.create_experiment(experiment_name)
+            mlflow.set_experiment(experiment_name)
+        mlflow.start_run(run_name="evaluation")
+        logger.info("Started new MLflow run for evaluation")
     
-    # Auto-detect model if not provided
-    if model_path_obj is None:
-        model_path_obj = _find_default_model()
+    try:
+        # Convert string to Path if provided
+        model_path_obj: Optional[Path] = None
+        if model_path:
+            model_path_obj = Path(model_path)
+        
+        # Auto-detect model if not provided
         if model_path_obj is None:
-            available_models = _find_model_files()
-            if available_models:
-                logger.error(
-                    f"No model file specified and no default model found. "
-                    f"Available models: {[m.name for m in available_models]}"
-                )
-            else:
-                logger.error(
-                    "No model files found in models directory. "
-                    "Please train a model first or specify a model_path."
-                )
-            raise FileNotFoundError("No model file found for evaluation")
-        logger.info(f"Auto-detected model: {model_path_obj.name}")
-    elif not model_path_obj.exists():
-        # If provided path doesn't exist, try to find it in MODELS_DIR
-        if not model_path_obj.is_absolute():
-            model_path_obj = MODELS_DIR / model_path_obj
-        if not model_path_obj.exists():
-            # Try to find any model file
-            found_model = find_default_model()
-            if found_model:
-                logger.warning(
-                    f"Model file {model_path_obj} not found. Using auto-detected model: {found_model.name}"
-                )
-                model_path_obj = found_model
-            else:
-                raise FileNotFoundError(f"Model file not found at {model_path_obj}")
-    
-    logger.info(f"Loading model from {model_path_obj}...")
-    model = load_model(model_path_obj)
-    logger.success("Model loaded successfully.")
+            model_path_obj = _find_default_model()
+            if model_path_obj is None:
+                available_models = _find_model_files()
+                if available_models:
+                    logger.error(
+                        f"No model file specified and no default model found. "
+                        f"Available models: {[m.name for m in available_models]}"
+                    )
+                else:
+                    logger.error(
+                        "No model files found in models directory. "
+                        "Please train a model first or specify a model_path."
+                    )
+                raise FileNotFoundError("No model file found for evaluation")
+            logger.info(f"Auto-detected model: {model_path_obj.name}")
+        elif not model_path_obj.exists():
+            # If provided path doesn't exist, try to find it in MODELS_DIR
+            if not model_path_obj.is_absolute():
+                model_path_obj = MODELS_DIR / model_path_obj
+            if not model_path_obj.exists():
+                # Try to find any model file
+                found_model = _find_default_model()
+                if found_model:
+                    logger.warning(
+                        f"Model file {model_path_obj} not found. Using auto-detected model: {found_model.name}"
+                    )
+                    model_path_obj = found_model
+                else:
+                    raise FileNotFoundError(f"Model file not found at {model_path_obj}")
+        
+        logger.info(f"Loading model from {model_path_obj}...")
+        model = load_model(model_path_obj)
+        logger.success("Model loaded successfully.")
+        
+        # Log model path to MLflow
+        if mlflow.active_run():
+            mlflow.log_param("evaluation_model_path", str(model_path_obj))
 
-    logger.info("Loading data...")
-    data = load_processed(data_path)
-    logger.success("Data loaded successfully.")
+        logger.info("Loading data...")
+        data = load_processed(data_path)
+        logger.success("Data loaded successfully.")
+        
+        # Log data info to MLflow
+        if mlflow.active_run():
+            mlflow.log_param("evaluation_data_path", str(data_path))
+            mlflow.log_param("evaluation_samples", len(data))
 
-    logger.info("Splitting data into features and labels...")
-    X, y, _ = split_data(data)
-    logger.success("Data split successfully.")
+        logger.info("Splitting data into features and labels...")
+        X, y, _ = split_data(data)
+        logger.success("Data split successfully.")
 
-    logger.info("Evaluating model...")
-    metrics = evaluate_model(model, X, y)
-    logger.success("Model evaluated successfully.")
+        logger.info("Evaluating model...")
+        metrics = evaluate_model(model, X, y)
+        logger.success("Model evaluated successfully.")
+        
+        # Log metrics to MLflow
+        if mlflow.active_run():
+            for metric_name, value in metrics.items():
+                mlflow.log_metric(f"eval_{metric_name}", value)
+            logger.info("Metrics logged to MLflow")
 
-    # Generate metrics path from model name if not provided
-    if metrics_path is None:
-        model_name = get_model_name(model)
-        metrics_path = MODELS_DIR / f"metrics_{model_name}.json"
-    
-    logger.info(f"Saving metrics to {metrics_path}...")
-    save_metrics(metrics, metrics_path)
-    logger.success("Metrics saved successfully.")
+        # Generate metrics path from model name if not provided
+        if metrics_path is None:
+            model_name = get_model_name(model)
+            metrics_path = MODELS_DIR / f"metrics_{model_name}.json"
+        
+        logger.info(f"Saving metrics to {metrics_path}...")
+        save_metrics(metrics, metrics_path)
+        logger.success("Metrics saved successfully.")
 
-    # Display metrics in a formatted, visually appealing way
-    display_metrics(metrics)
+        # Display metrics in a formatted, visually appealing way
+        display_metrics(metrics)
+        
+    finally:
+        if mlflow.active_run():
+            mlflow.end_run()
+            logger.info("MLflow run ended")
 
 if __name__ == "__main__":
     app()
