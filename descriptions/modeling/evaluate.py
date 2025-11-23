@@ -118,6 +118,8 @@ def save_metrics(metrics: dict, metrics_path: Path) -> None:
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
 
+    
+
 
 @app.command()
 def main(
