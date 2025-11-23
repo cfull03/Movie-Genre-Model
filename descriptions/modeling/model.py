@@ -1,29 +1,33 @@
 from pathlib import Path
-from typing import Any, Optional, Union, Dict
+from typing import Any, Dict, Optional, Union
 
 import joblib
 from loguru import logger
-from sklearn.pipeline import Pipeline
-from sklearn.multiclass import OneVsRestClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.pipeline import Pipeline
 
 from descriptions.config import MODELS_DIR
 
-__all__ = ["build_model", "build_pipeline", "save_model", "load_model", "get_params", "get_model_name"]
+__all__ = [
+    "build_model",
+    "build_pipeline",
+    "save_model",
+    "load_model",
+    "get_params",
+    "get_model_name",
+]
 
 
 # ---- PUBLIC API ----
-def save_model(
-    model: Any, 
-    model_name: Union[str, Path]
-) -> None:
+def save_model(model: Any, model_name: Union[str, Path]) -> None:
     """
     Save a model to the models directory.
-    
+
     Args:
         model: The model object to save (can be any sklearn model, preprocessor, etc.)
         model_name: Name of the model file (with or without .joblib extension) or full Path
-    
+
     Raises:
         ValueError: If model_name is empty or invalid
         OSError: If the file cannot be written
@@ -40,12 +44,12 @@ def save_model(
         # Handle string names
         if not model_name or not model_name.strip():
             raise ValueError("model_name cannot be empty")
-        
+
         model_name = model_name.strip()
         # Ensure it has an extension
         if not model_name.endswith(".joblib"):
             model_name = f"{model_name}.joblib"
-        
+
         output_path = MODELS_DIR / model_name
 
     try:
@@ -60,13 +64,13 @@ def save_model(
 def load_model(model_name: Union[str, Path]) -> Any:
     """
     Load a saved model from the models directory.
-    
+
     Args:
         model_name: Name of the model file (with or without .joblib extension) or full Path
-    
+
     Returns:
         The loaded model object
-    
+
     Raises:
         FileNotFoundError: If the model file does not exist
         ValueError: If model_name is empty or invalid
@@ -82,19 +86,19 @@ def load_model(model_name: Union[str, Path]) -> Any:
         # Handle string names
         if not model_name or not model_name.strip():
             raise ValueError("model_name cannot be empty")
-        
+
         model_name = model_name.strip()
         # Ensure model_name has .joblib extension
         if not model_name.endswith(".joblib"):
             model_name = f"{model_name}.joblib"
-        
+
         input_path = MODELS_DIR / model_name
-    
+
     if not input_path.exists():
         error_msg = f"Model file not found at {input_path}"
         logger.error(error_msg)
         raise FileNotFoundError(error_msg)
-    
+
     try:
         logger.info(f"Loading model from {input_path}...")
         model = joblib.load(input_path)
@@ -107,35 +111,31 @@ def load_model(model_name: Union[str, Path]) -> Any:
 
 def build_model(
     C: float = 1.0,
-    penalty: str = 'l1',
-    solver: str = 'liblinear',
+    penalty: str = "l1",
+    solver: str = "liblinear",
     max_iter: int = 1000,
 ) -> OneVsRestClassifier:
     """
     Build the main classification model for multi-label genre prediction.
-    
+
     Uses OneVsRestClassifier strategy with LogisticRegression as the base estimator.
     This allows predicting multiple genres (labels) for each movie description.
-    
+
     Args:
         C: Inverse of regularization strength (default: 1.0). Smaller values specify stronger regularization.
         penalty: Type of regularization penalty ('l1' or 'l2', default: 'l1')
         solver: Algorithm to use for optimization (default: 'liblinear', required for L1 penalty)
         max_iter: Maximum number of iterations for convergence (default: 1000)
-    
+
     Returns:
         OneVsRestClassifier with LogisticRegression base estimator
-    
+
     Note:
         The 'liblinear' solver is required when using L1 penalty. For L2 penalty,
         you can use 'lbfgs' or 'sag' solvers as well.
     """
     base_estimator = LogisticRegression(
-        C=C,
-        penalty=penalty,
-        solver=solver,
-        max_iter=max_iter,
-        random_state=42
+        C=C, penalty=penalty, solver=solver, max_iter=max_iter, random_state=42
     )
     clf = OneVsRestClassifier(base_estimator)
     return clf
@@ -149,17 +149,17 @@ def build_pipeline(
 ) -> Pipeline:
     """
     Build the complete pipeline (preprocessor + model) for movie genre classification.
-    
+
     The pipeline consists of:
     1. TfidfVectorizer: Transforms text descriptions into TF-IDF features
     2. OneVsRestClassifier: Multi-label classifier for genre prediction
-    
+
     Note: The MultiLabelBinarizer (mlb) is not included in the pipeline as it's used
     separately for encoding/decoding target labels. It should be loaded separately
     when needed for transforming labels.
-    
+
     Args:
-        use_fitted_preprocessor: If True, load pre-fitted TfidfVectorizer. 
+        use_fitted_preprocessor: If True, load pre-fitted TfidfVectorizer.
             If False, create a new unfitted one that will be fitted during training.
         vectorizer_path: Path to saved TfidfVectorizer (only used if use_fitted_preprocessor=True).
             If None, uses default path from MODELS_DIR.
@@ -167,22 +167,22 @@ def build_pipeline(
             If None, uses default path from MODELS_DIR. Note: mlb is loaded but not used in pipeline.
         model_params: Optional dictionary of parameters to pass to build_model().
             Keys can include: 'C', 'penalty', 'solver', 'max_iter'.
-    
+
     Returns:
         Pipeline object with 'vectorizer' and 'model' steps.
-    
+
     Example:
         >>> # For training (unfitted preprocessor)
         >>> pipeline = build_pipeline(use_fitted_preprocessor=False)
         >>> pipeline.fit(X_train, y_train)
-        
+
         >>> # For inference (fitted preprocessor)
         >>> pipeline = build_pipeline(use_fitted_preprocessor=True)
         >>> predictions = pipeline.predict(X_test)
     """
     # Import here to avoid circular import with preprocess.py
     from .preprocess import build_preprocessor, load_preprocessors
-    
+
     if use_fitted_preprocessor:
         vectorizer, mlb = load_preprocessors(vectorizer_path, mlb_path)
         # Note: mlb is loaded but not used in pipeline - it's for label encoding/decoding
@@ -190,17 +190,14 @@ def build_pipeline(
     else:
         vectorizer, _ = build_preprocessor()
         logger.debug("Created new unfitted preprocessor")
-    
+
     # Build model with optional parameters
     if model_params is None:
         model_params = {}
     model = build_model(**model_params)
-    
-    pipeline = Pipeline([
-        ('vectorizer', vectorizer),
-        ('model', model)
-    ])
-    
+
+    pipeline = Pipeline([("vectorizer", vectorizer), ("model", model)])
+
     logger.info("Pipeline built successfully with vectorizer and model steps")
     return pipeline
 
@@ -208,88 +205,88 @@ def build_pipeline(
 def get_params(model: Any) -> Dict[str, Any]:
     """
     Extract key parameters from a model's base estimator.
-    
+
     For OneVsRestClassifier models, extracts parameters from the underlying
     base estimator (e.g., LogisticRegression).
-    
+
     Args:
         model: Model object (OneVsRestClassifier, Pipeline, or base estimator)
-    
+
     Returns:
         Dictionary of parameter names and values
     """
     # Handle Pipeline objects - extract the model step
     if isinstance(model, Pipeline):
         # Try to find a 'model' step
-        if 'model' in model.named_steps:
-            model = model.named_steps['model']
+        if "model" in model.named_steps:
+            model = model.named_steps["model"]
         else:
             # Use the last step if no 'model' step found
             model = model.steps[-1][1]
-    
+
     # Extract base estimator from OneVsRestClassifier
     if isinstance(model, OneVsRestClassifier):
         base_estimator = model.estimator
-    elif hasattr(model, 'estimator'):
+    elif hasattr(model, "estimator"):
         base_estimator = model.estimator
-    elif hasattr(model, 'base_estimator'):
+    elif hasattr(model, "base_estimator"):
         base_estimator = model.base_estimator
     else:
         # Use the model itself if it's already a base estimator
         base_estimator = model
-    
+
     # Extract key parameters
     params = {}
-    
+
     # Common parameters for LogisticRegression and similar classifiers
-    if hasattr(base_estimator, 'C'):
-        params['C'] = base_estimator.C
-    if hasattr(base_estimator, 'penalty'):
-        params['penalty'] = base_estimator.penalty
-    if hasattr(base_estimator, 'solver'):
-        params['solver'] = base_estimator.solver
-    if hasattr(base_estimator, 'max_iter'):
-        params['max_iter'] = base_estimator.max_iter
-    if hasattr(base_estimator, 'random_state'):
-        params['random_state'] = base_estimator.random_state
-    
+    if hasattr(base_estimator, "C"):
+        params["C"] = base_estimator.C
+    if hasattr(base_estimator, "penalty"):
+        params["penalty"] = base_estimator.penalty
+    if hasattr(base_estimator, "solver"):
+        params["solver"] = base_estimator.solver
+    if hasattr(base_estimator, "max_iter"):
+        params["max_iter"] = base_estimator.max_iter
+    if hasattr(base_estimator, "random_state"):
+        params["random_state"] = base_estimator.random_state
+
     return params
 
 
 def get_model_name(model: Any) -> str:
     """
     Generate a model name based on the base classifier and its key parameters.
-    
+
     Args:
         model: Model object (OneVsRestClassifier, Pipeline, or base estimator)
-    
+
     Returns:
         String name for the model file (without extension)
     """
     # Handle Pipeline objects - extract the model step
     if isinstance(model, Pipeline):
         # Try to find a 'model' step
-        if 'model' in model.named_steps:
-            model = model.named_steps['model']
+        if "model" in model.named_steps:
+            model = model.named_steps["model"]
         else:
             # Use the last step if no 'model' step found
             model = model.steps[-1][1]
-    
+
     # Extract base estimator from OneVsRestClassifier
     if isinstance(model, OneVsRestClassifier):
         base_estimator = model.estimator
-    elif hasattr(model, 'estimator'):
+    elif hasattr(model, "estimator"):
         base_estimator = model.estimator
-    elif hasattr(model, 'base_estimator'):
+    elif hasattr(model, "base_estimator"):
         base_estimator = model.base_estimator
     else:
         # Use the model itself if it's already a base estimator
         base_estimator = model
-    
+
     # Get the classifier class name
     classifier_name = base_estimator.__class__.__name__
     model_name = classifier_name
-    
+
     # Convert to lowercase and replace special characters
     model_name = model_name.lower().replace(" ", "_")
     return model_name

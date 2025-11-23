@@ -8,7 +8,7 @@ from __future__ import annotations
 
 # Resolve package version from installed metadata.
 try:  # Why: avoid import-time failure when running from source/uninstalled.
-    from importlib.metadata import version, PackageNotFoundError  # Python 3.8+
+    from importlib.metadata import PackageNotFoundError, version  # Python 3.8+
 except Exception:  # pragma: no cover
     version = None  # type: ignore
     PackageNotFoundError = Exception  # type: ignore
@@ -19,6 +19,11 @@ except PackageNotFoundError:
     __version__ = "0.0.0"
 
 # Model building and management
+# Evaluation utilities
+from .evaluate import (
+    evaluate_model,
+    save_metrics,
+)
 from .model import (
     build_model,
     build_pipeline,
@@ -39,12 +44,6 @@ from .preprocess import (
 from .train import (
     split_data,
     train_model,
-)
-
-# Evaluation utilities
-from .evaluate import (
-    evaluate_model,
-    save_metrics,
 )
 
 __all__ = [

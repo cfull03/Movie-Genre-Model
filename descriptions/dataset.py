@@ -1,19 +1,18 @@
 from __future__ import annotations
+
 from pathlib import Path
-from typing import Any
 
 from loguru import logger
+import pandas as pd
 from tqdm import tqdm
 import typer
-import pandas as pd
-import joblib
 
-from descriptions.config import MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR
+from descriptions.config import INTERIM_DATA_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
 
 app = typer.Typer()
 
-__all__ = ["load_data", "load_interim", "load_processed",
-            "to_interim", "to_processed"]
+__all__ = ["load_data", "load_interim", "load_processed", "to_interim", "to_processed"]
+
 
 # ----- PRIVATE HELPER FUNCTIONS -----
 def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
@@ -24,15 +23,15 @@ def _basic_cleaning(df: pd.DataFrame, col: str = "movie_name") -> pd.DataFrame:
         pbar.set_description("Dropping duplicates and nulls")
         s = data[col].dropna().drop_duplicates()
         pbar.update(1)
-        
+
         pbar.set_description("Converting to string and stripping")
         s = s.astype(str).str.strip()
         pbar.update(1)
-        
+
         pbar.set_description("Replacing spaces and hyphens")
         s = s.str.replace(r"[ -]+", "_", regex=True)
         pbar.update(1)
-        
+
         pbar.set_description("Removing special characters")
         s = s.str.replace(r"[^a-z0-9_]", "", regex=True)
         pbar.update(1)
@@ -49,7 +48,6 @@ def _set_index(df: pd.DataFrame) -> pd.DataFrame:
     out = df.set_index("movie_name")
     logger.success("Index set complete.")
     return out
-
 
 
 # ----- PUBLIC API -----
@@ -71,7 +69,7 @@ def load_data(input_path: Path = RAW_DATA_DIR / "top_movies.csv") -> pd.DataFram
 def load_interim(input_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv") -> pd.DataFrame:
     """
     Load the interim movies CSV into a DataFrame.
-    
+
     If the CSV has an index column (from previous processing), it will be loaded as the index.
     """
     try:
@@ -90,11 +88,12 @@ def load_interim(input_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv") -> 
         logger.error(f"Error loading data: {e}")
         raise e
     return data
+
 
 def load_processed(input_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv") -> pd.DataFrame:
     """
     Load the processed movies CSV into a DataFrame.
-    
+
     If the CSV has an index column (from previous processing), it will be loaded as the index.
     """
     try:
@@ -113,7 +112,6 @@ def load_processed(input_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv
         logger.error(f"Error loading data: {e}")
         raise e
     return data
-
 
 
 def to_interim(
@@ -122,7 +120,7 @@ def to_interim(
 ) -> None:
     """
     Save data to the interim data directory.
-    
+
     If the DataFrame has a named index, it will be saved as a column.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -137,7 +135,7 @@ def to_processed(
 ) -> None:
     """
     Save data to the processed data directory.
-    
+
     If the DataFrame has a named index, it will be saved as a column.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,7 +154,7 @@ def main(
 ):
     """
     Process raw data into cleaned interim data.
-    
+
     Args:
         input_path: Path to raw data CSV file
         output_path: Path where cleaned data will be saved
@@ -167,11 +165,11 @@ def main(
         logger.info(f"Cleaned data already exists at {output_path}")
         logger.info("Skipping data processing. Use --force to reprocess.")
         return
-    
+
     # ---- Temporary CLI LOGIC FOR PREPPING DATA ----
     logger.info(f"Loading data from {input_path}...")
     df = load_data(input_path)
-    
+
     logger.info("Basic cleaning data...")
     df = _basic_cleaning(df)
 
@@ -182,6 +180,7 @@ def main(
     to_interim(df, output_path)
     logger.success(f"Data saved to {output_path}.")
     # ----------------------------------------------
+
 
 if __name__ == "__main__":
     app()

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 # Resolve package version from installed metadata.
 try:  # Why: avoid import-time failure when running from source/uninstalled.
-    from importlib.metadata import version, PackageNotFoundError  # Python 3.8+
+    from importlib.metadata import PackageNotFoundError, version  # Python 3.8+
 except Exception:  # pragma: no cover
     version = None  # type: ignore
     PackageNotFoundError = Exception  # type: ignore
