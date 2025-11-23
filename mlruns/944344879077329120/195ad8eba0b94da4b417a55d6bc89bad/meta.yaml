@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/christianfullerton/Developer/Python%20Workspace/movie_genre_model/mlruns/944344879077329120/195ad8eba0b94da4b417a55d6bc89bad/artifacts
+end_time: 1763919390149
+entry_point_name: ''
+experiment_id: '944344879077329120'
+lifecycle_stage: active
+run_id: 195ad8eba0b94da4b417a55d6bc89bad
+run_name: evaluation
+run_uuid: 195ad8eba0b94da4b417a55d6bc89bad
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1763919367943
+status: 3
+tags: []
+user_id: christianfullerton

@@ -1,0 +1,6 @@
+artifact_location: file:///Users/christianfullerton/Developer/Python%20Workspace/movie_genre_model/mlruns/944344879077329120
+creation_time: 1763919363328
+experiment_id: '944344879077329120'
+last_update_time: 1763919363328
+lifecycle_stage: active
+name: movie-genre-classification
