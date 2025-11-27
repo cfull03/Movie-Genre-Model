@@ -4,6 +4,10 @@
 # Machine learning models (binary files)
 *.joblib
 
+# MLflow experiment tracking artifacts
+mlruns/
+*.pkl
+
 # Mac OS-specific storage files
 .DS_Store
 
