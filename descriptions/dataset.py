@@ -52,16 +52,30 @@ def _set_index(df: pd.DataFrame) -> pd.DataFrame:
 
 # ----- PUBLIC API -----
 def load_data(input_path: Path = RAW_DATA_DIR / "top_movies.csv") -> pd.DataFrame:
-    """Load the raw movies CSV into a DataFrame."""
+    """
+    Load the raw movies CSV into a DataFrame.
+
+    Args:
+        input_path: Path to the raw data CSV file
+
+    Returns:
+        DataFrame containing the raw movie data
+
+    Raises:
+        FileNotFoundError: If the input file does not exist
+    """
     try:
-        logger.info(f"Loading data from {input_path}...")
+        logger.info(f"Loading raw data from {input_path}...")
         data = pd.read_csv(input_path)
-        logger.success("Data loaded successfully.")
+        logger.success(
+            f"✓ Data loaded successfully: {len(data)} rows, {len(data.columns)} columns"
+        )
+        logger.debug(f"Columns: {list(data.columns)}")
     except FileNotFoundError:
         logger.error(f"File not found at {input_path}")
         raise FileNotFoundError(f"File not found at {input_path}")
     except Exception as e:
-        logger.error(f"Error loading data: {e}")
+        logger.error(f"Error loading data from {input_path}: {e}")
         raise e
     return data
 
@@ -71,21 +85,34 @@ def load_interim(input_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv") -> 
     Load the interim movies CSV into a DataFrame.
 
     If the CSV has an index column (from previous processing), it will be loaded as the index.
+
+    Args:
+        input_path: Path to the interim data CSV file
+
+    Returns:
+        DataFrame containing the cleaned interim data
+
+    Raises:
+        FileNotFoundError: If the input file does not exist
     """
     try:
-        logger.info(f"Loading data from {input_path}...")
+        logger.info(f"Loading interim data from {input_path}...")
         # Try to load with index first, fallback to no index
         try:
             data = pd.read_csv(input_path, index_col=0)
+            logger.debug("Loaded with index column")
         except (ValueError, IndexError):
             # If index_col=0 fails, load without index
             data = pd.read_csv(input_path)
-        logger.success("Data loaded successfully.")
+            logger.debug("Loaded without index column")
+        logger.success(
+            f"✓ Data loaded successfully: {len(data)} rows, {len(data.columns)} columns"
+        )
     except FileNotFoundError:
         logger.error(f"File not found at {input_path}")
         raise FileNotFoundError(f"File not found at {input_path}")
     except Exception as e:
-        logger.error(f"Error loading data: {e}")
+        logger.error(f"Error loading data from {input_path}: {e}")
         raise e
     return data
 
@@ -95,21 +122,34 @@ def load_processed(input_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv
     Load the processed movies CSV into a DataFrame.
 
     If the CSV has an index column (from previous processing), it will be loaded as the index.
+
+    Args:
+        input_path: Path to the processed data CSV file
+
+    Returns:
+        DataFrame containing the processed data (features + labels)
+
+    Raises:
+        FileNotFoundError: If the input file does not exist
     """
     try:
-        logger.info(f"Loading data from {input_path}...")
+        logger.info(f"Loading processed data from {input_path}...")
         # Try to load with index first, fallback to no index
         try:
             data = pd.read_csv(input_path, index_col=0)
+            logger.debug("Loaded with index column")
         except (ValueError, IndexError):
             # If index_col=0 fails, load without index
             data = pd.read_csv(input_path)
-        logger.success("Data loaded successfully.")
+            logger.debug("Loaded without index column")
+        logger.success(
+            f"✓ Data loaded successfully: {len(data)} rows, {len(data.columns)} columns"
+        )
     except FileNotFoundError:
         logger.error(f"File not found at {input_path}")
         raise FileNotFoundError(f"File not found at {input_path}")
     except Exception as e:
-        logger.error(f"Error loading data: {e}")
+        logger.error(f"Error loading data from {input_path}: {e}")
         raise e
     return data
 
@@ -166,20 +206,28 @@ def main(
         logger.info("Skipping data processing. Use --force to reprocess.")
         return
 
-    # ---- Temporary CLI LOGIC FOR PREPPING DATA ----
-    logger.info(f"Loading data from {input_path}...")
+    logger.info("=" * 70)
+    logger.info("Processing raw data into cleaned interim data")
+    logger.info("=" * 70)
+
+    logger.info(f"Step 1/3: Loading raw data from {input_path}...")
     df = load_data(input_path)
 
-    logger.info("Basic cleaning data...")
+    logger.info("Step 2/3: Performing basic cleaning on data...")
     df = _basic_cleaning(df)
+    logger.success(f"✓ Cleaning complete: {len(df)} samples remaining")
 
-    logger.info("Setting index on data...")
+    logger.info("Step 3/3: Setting index and saving to interim...")
     df = _set_index(df)
+    logger.debug(f"Index set to: {df.index.name}")
 
-    logger.info(f"Saving data to {output_path}...")
+    logger.info(f"Saving cleaned data to {output_path}...")
     to_interim(df, output_path)
-    logger.success(f"Data saved to {output_path}.")
-    # ----------------------------------------------
+    logger.success(f"✓ Data saved successfully to {output_path}")
+
+    logger.info("=" * 70)
+    logger.success("🎉 Data processing pipeline completed successfully!")
+    logger.info("=" * 70)
 
 
 if __name__ == "__main__":
