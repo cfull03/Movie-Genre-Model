@@ -3,17 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional, Union
 
+from loguru import logger
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import seaborn as sns
-from loguru import logger
 from sklearn.metrics import (
-    classification_report,
     confusion_matrix,
     f1_score,
-    hamming_loss,
     jaccard_score,
     precision_recall_fscore_support,
     precision_score,
@@ -21,7 +19,7 @@ from sklearn.metrics import (
 )
 import typer
 
-from descriptions.config import FIGURES_DIR, INTERIM_DATA_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+from descriptions.config import FIGURES_DIR, INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim, load_processed
 from descriptions.modeling.model import get_model_name, load_model
 from descriptions.modeling.preprocess import load_preprocessors
@@ -52,16 +50,16 @@ def plot_confusion_matrix(
     sns.heatmap(
         cm,
         annot=True,
-        fmt='d',
-        cmap='Blues',
+        fmt="d",
+        cmap="Blues",
         xticklabels=labels,
         yticklabels=labels,
     )
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
-    plt.title('Confusion Matrix')
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Confusion matrix saved to {output_path}")
 
@@ -83,20 +81,20 @@ def plot_recall_precision(
         output_path: Path where the figure will be saved
         figsize: Figure size tuple (width, height) in inches
     """
-    recall = recall_score(y_true, y_pred, average='macro')
-    precision = precision_score(y_true, y_pred, average='macro')
-    f1 = f1_score(y_true, y_pred, average='macro')
-    
+    recall = recall_score(y_true, y_pred, average="macro")
+    precision = precision_score(y_true, y_pred, average="macro")
+    f1 = f1_score(y_true, y_pred, average="macro")
+
     plt.figure(figsize=figsize)
-    metrics = ['Recall', 'Precision', 'F1 Score']
+    metrics = ["Recall", "Precision", "F1 Score"]
     scores = [recall, precision, f1]
-    sns.barplot(x=metrics, y=scores, palette='viridis')
-    plt.xlabel('Metric')
-    plt.ylabel('Score')
-    plt.title('Recall and Precision Scores')
+    sns.barplot(x=metrics, y=scores, palette="viridis")
+    plt.xlabel("Metric")
+    plt.ylabel("Score")
+    plt.title("Recall and Precision Scores")
     plt.ylim(0, 1)
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Recall and precision plot saved to {output_path}")
 
@@ -122,49 +120,76 @@ def plot_threshold_sensitivity(
     f1_scores = []
     precision_scores = []
     recall_scores = []
-    
+
     logger.debug(f"Calculating metrics for {len(thresholds)} threshold values...")
     for threshold in thresholds:
         y_pred = (y_proba >= threshold).astype(int)
-        f1_scores.append(f1_score(y_true, y_pred, average='macro', zero_division=0))
-        precision_scores.append(precision_score(y_true, y_pred, average='macro', zero_division=0))
-        recall_scores.append(recall_score(y_true, y_pred, average='macro', zero_division=0))
-    
+        f1_scores.append(f1_score(y_true, y_pred, average="macro", zero_division=0))
+        precision_scores.append(precision_score(y_true, y_pred, average="macro", zero_division=0))
+        recall_scores.append(recall_score(y_true, y_pred, average="macro", zero_division=0))
+
     fig, ax = plt.subplots(figsize=figsize)
-    
-    ax.plot(thresholds, f1_scores, 'o-', label='F1 Score', linewidth=2, markersize=6, color='#1f77b4')
-    ax.plot(thresholds, precision_scores, 's-', label='Precision', linewidth=2, markersize=6, color='#ff7f0e')
-    ax.plot(thresholds, recall_scores, '^-', label='Recall', linewidth=2, markersize=6, color='#2ca02c')
-    
+
+    ax.plot(
+        thresholds, f1_scores, "o-", label="F1 Score", linewidth=2, markersize=6, color="#1f77b4"
+    )
+    ax.plot(
+        thresholds,
+        precision_scores,
+        "s-",
+        label="Precision",
+        linewidth=2,
+        markersize=6,
+        color="#ff7f0e",
+    )
+    ax.plot(
+        thresholds, recall_scores, "^-", label="Recall", linewidth=2, markersize=6, color="#2ca02c"
+    )
+
     # Mark current threshold if provided
     if current_threshold is not None:
-        current_idx = np.argmin(np.abs(thresholds - current_threshold))
-        ax.axvline(x=current_threshold, color='red', linestyle='--', linewidth=2, 
-                   label=f'Current Threshold ({current_threshold})', alpha=0.7)
+        ax.axvline(
+            x=current_threshold,
+            color="red",
+            linestyle="--",
+            linewidth=2,
+            label=f"Current Threshold ({current_threshold})",
+            alpha=0.7,
+        )
         # Add annotation
-        ax.annotate(f'Threshold = {current_threshold}', 
-                   xy=(current_threshold, 0.95), 
-                   xytext=(current_threshold + 0.1, 0.95),
-                   arrowprops=dict(arrowstyle='->', color='red', alpha=0.7),
-                   fontsize=10, color='red', fontweight='bold')
-    
+        ax.annotate(
+            f"Threshold = {current_threshold}",
+            xy=(current_threshold, 0.95),
+            xytext=(current_threshold + 0.1, 0.95),
+            arrowprops=dict(arrowstyle="->", color="red", alpha=0.7),
+            fontsize=10,
+            color="red",
+            fontweight="bold",
+        )
+
     # Find optimal threshold (max F1)
     optimal_idx = np.argmax(f1_scores)
     optimal_threshold = thresholds[optimal_idx]
     optimal_f1 = f1_scores[optimal_idx]
-    ax.axvline(x=optimal_threshold, color='green', linestyle=':', linewidth=2, 
-               label=f'Optimal F1 Threshold ({optimal_threshold:.2f})', alpha=0.7)
-    
-    ax.set_xlabel('Threshold', fontsize=12)
-    ax.set_ylabel('Score', fontsize=12)
-    ax.set_title('Threshold Sensitivity Curve', fontsize=14, fontweight='bold')
+    ax.axvline(
+        x=optimal_threshold,
+        color="green",
+        linestyle=":",
+        linewidth=2,
+        label=f"Optimal F1 Threshold ({optimal_threshold:.2f})",
+        alpha=0.7,
+    )
+
+    ax.set_xlabel("Threshold", fontsize=12)
+    ax.set_ylabel("Score", fontsize=12)
+    ax.set_title("Threshold Sensitivity Curve", fontsize=14, fontweight="bold")
     ax.set_xlim(0.05, 0.95)
     ax.set_ylim(0, 1)
-    ax.legend(loc='best', fontsize=10)
+    ax.legend(loc="best", fontsize=10)
     ax.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Threshold sensitivity plot saved to {output_path}")
     logger.info(f"  Optimal threshold (max F1): {optimal_threshold:.2f} (F1={optimal_f1:.3f})")
@@ -178,7 +203,7 @@ def plot_genre_cooccurrence(
 ) -> None:
     """
     Plot genre co-occurrence heatmap showing which genres appear together.
-    
+
     Args:
         y_true: True binary labels (n_samples, n_labels)
         mlb: MultiLabelBinarizer with genre classes
@@ -187,7 +212,7 @@ def plot_genre_cooccurrence(
     """
     n_genres = len(mlb.classes_)
     cooccurrence = np.zeros((n_genres, n_genres))
-    
+
     # Calculate co-occurrence matrix
     for i in range(n_genres):
         for j in range(n_genres):
@@ -197,25 +222,25 @@ def plot_genre_cooccurrence(
             else:
                 # Off-diagonal: count of movies with both genres
                 cooccurrence[i, j] = ((y_true[:, i] == 1) & (y_true[:, j] == 1)).sum()
-    
+
     fig, ax = plt.subplots(figsize=figsize)
     sns.heatmap(
         cooccurrence,
         annot=True,
-        fmt='.0f',
-        cmap='YlOrRd',
+        fmt=".0f",
+        cmap="YlOrRd",
         xticklabels=mlb.classes_,
         yticklabels=mlb.classes_,
-        cbar_kws={'label': 'Co-occurrence Count'},
+        cbar_kws={"label": "Co-occurrence Count"},
         square=True,
     )
-    ax.set_xlabel('Genre', fontsize=12)
-    ax.set_ylabel('Genre', fontsize=12)
-    ax.set_title('Genre Co-occurrence Matrix', fontsize=14, fontweight='bold')
-    plt.xticks(rotation=45, ha='right')
+    ax.set_xlabel("Genre", fontsize=12)
+    ax.set_ylabel("Genre", fontsize=12)
+    ax.set_title("Genre Co-occurrence Matrix", fontsize=14, fontweight="bold")
+    plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Genre co-occurrence plot saved to {output_path}")
 
@@ -229,7 +254,7 @@ def plot_genre_frequency(
 ) -> None:
     """
     Plot genre frequency distribution comparing true vs predicted counts.
-    
+
     Args:
         y_true: True binary labels (n_samples, n_labels)
         y_pred: Predicted binary labels (n_samples, n_labels)
@@ -239,33 +264,42 @@ def plot_genre_frequency(
     """
     true_counts = y_true.sum(axis=0)
     pred_counts = y_pred.sum(axis=0)
-    
+
     fig, ax = plt.subplots(figsize=figsize)
     x_pos = np.arange(len(mlb.classes_))
     width = 0.35
-    
-    bars1 = ax.bar(x_pos - width/2, true_counts, width, label='True', alpha=0.8, color='#2ca02c')
-    bars2 = ax.bar(x_pos + width/2, pred_counts, width, label='Predicted', alpha=0.8, color='#1f77b4')
-    
-    ax.set_xlabel('Genre', fontsize=12)
-    ax.set_ylabel('Frequency', fontsize=12)
-    ax.set_title('Genre Frequency Distribution (True vs Predicted)', fontsize=14, fontweight='bold')
+
+    bars1 = ax.bar(x_pos - width / 2, true_counts, width, label="True", alpha=0.8, color="#2ca02c")
+    bars2 = ax.bar(
+        x_pos + width / 2, pred_counts, width, label="Predicted", alpha=0.8, color="#1f77b4"
+    )
+
+    ax.set_xlabel("Genre", fontsize=12)
+    ax.set_ylabel("Frequency", fontsize=12)
+    ax.set_title(
+        "Genre Frequency Distribution (True vs Predicted)", fontsize=14, fontweight="bold"
+    )
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(mlb.classes_, rotation=45, ha='right')
+    ax.set_xticklabels(mlb.classes_, rotation=45, ha="right")
     ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-    
+    ax.grid(axis="y", alpha=0.3)
+
     # Add value labels on bars
     for bars in [bars1, bars2]:
         for bar in bars:
             height = bar.get_height()
             if height > 0:
-                ax.text(bar.get_x() + bar.get_width()/2., height,
-                       f'{int(height)}',
-                       ha='center', va='bottom', fontsize=8)
-    
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2.0,
+                    height,
+                    f"{int(height)}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                )
+
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Genre frequency plot saved to {output_path}")
 
@@ -278,7 +312,7 @@ def plot_prediction_count_distribution(
 ) -> None:
     """
     Plot distribution of number of genres per movie (true vs predicted).
-    
+
     Args:
         y_true: True binary labels (n_samples, n_labels)
         y_pred: Predicted binary labels (n_samples, n_labels)
@@ -287,23 +321,25 @@ def plot_prediction_count_distribution(
     """
     true_counts = y_true.sum(axis=1)
     pred_counts = y_pred.sum(axis=1)
-    
+
     max_count = max(true_counts.max(), pred_counts.max())
     bins = np.arange(0, max_count + 2) - 0.5
-    
+
     fig, ax = plt.subplots(figsize=figsize)
-    ax.hist(true_counts, bins=bins, alpha=0.7, label='True', color='#2ca02c', edgecolor='black')
-    ax.hist(pred_counts, bins=bins, alpha=0.7, label='Predicted', color='#1f77b4', edgecolor='black')
-    
-    ax.set_xlabel('Number of Genres per Movie', fontsize=12)
-    ax.set_ylabel('Frequency', fontsize=12)
-    ax.set_title('Distribution of Genre Counts per Movie', fontsize=14, fontweight='bold')
+    ax.hist(true_counts, bins=bins, alpha=0.7, label="True", color="#2ca02c", edgecolor="black")
+    ax.hist(
+        pred_counts, bins=bins, alpha=0.7, label="Predicted", color="#1f77b4", edgecolor="black"
+    )
+
+    ax.set_xlabel("Number of Genres per Movie", fontsize=12)
+    ax.set_ylabel("Frequency", fontsize=12)
+    ax.set_title("Distribution of Genre Counts per Movie", fontsize=14, fontweight="bold")
     ax.legend()
-    ax.grid(axis='y', alpha=0.3)
+    ax.grid(axis="y", alpha=0.3)
     ax.set_xticks(range(int(max_count) + 1))
-    
+
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Prediction count distribution plot saved to {output_path}")
 
@@ -315,7 +351,7 @@ def plot_prediction_confidence(
 ) -> None:
     """
     Plot distribution of prediction confidence (probabilities).
-    
+
     Args:
         y_proba: Prediction probabilities (n_samples, n_labels)
         output_path: Path where the figure will be saved
@@ -323,26 +359,34 @@ def plot_prediction_confidence(
     """
     # Flatten all probabilities
     all_probas = y_proba.flatten()
-    
+
     fig, ax = plt.subplots(figsize=figsize)
-    ax.hist(all_probas, bins=50, alpha=0.7, color='#9467bd', edgecolor='black')
-    
-    ax.set_xlabel('Prediction Probability', fontsize=12)
-    ax.set_ylabel('Frequency', fontsize=12)
-    ax.set_title('Distribution of Prediction Confidence', fontsize=14, fontweight='bold')
-    ax.axvline(x=0.5, color='red', linestyle='--', linewidth=2, label='Default Threshold (0.5)', alpha=0.7)
+    ax.hist(all_probas, bins=50, alpha=0.7, color="#9467bd", edgecolor="black")
+
+    ax.set_xlabel("Prediction Probability", fontsize=12)
+    ax.set_ylabel("Frequency", fontsize=12)
+    ax.set_title("Distribution of Prediction Confidence", fontsize=14, fontweight="bold")
+    ax.axvline(
+        x=0.5, color="red", linestyle="--", linewidth=2, label="Default Threshold (0.5)", alpha=0.7
+    )
     ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-    
+    ax.grid(axis="y", alpha=0.3)
+
     # Add statistics text
     mean_prob = all_probas.mean()
     median_prob = np.median(all_probas)
-    ax.text(0.05, 0.95, f'Mean: {mean_prob:.3f}\nMedian: {median_prob:.3f}',
-            transform=ax.transAxes, fontsize=10, verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-    
+    ax.text(
+        0.05,
+        0.95,
+        f"Mean: {mean_prob:.3f}\nMedian: {median_prob:.3f}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+    )
+
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Prediction confidence plot saved to {output_path}")
 
@@ -356,7 +400,7 @@ def plot_hamming_loss_per_genre(
 ) -> None:
     """
     Plot Hamming loss (error rate) per genre.
-    
+
     Args:
         y_true: True binary labels (n_samples, n_labels)
         y_pred: Predicted binary labels (n_samples, n_labels)
@@ -370,29 +414,34 @@ def plot_hamming_loss_per_genre(
         errors = (y_true[:, i] != y_pred[:, i]).sum()
         total = len(y_true)
         hamming_per_genre.append(errors / total)
-    
+
     hamming_per_genre = np.array(hamming_per_genre)
-    
+
     fig, ax = plt.subplots(figsize=figsize)
     x_pos = np.arange(len(mlb.classes_))
-    bars = ax.bar(x_pos, hamming_per_genre, alpha=0.8, color='#d62728')
-    
-    ax.set_xlabel('Genre', fontsize=12)
-    ax.set_ylabel('Hamming Loss (Error Rate)', fontsize=12)
-    ax.set_title('Hamming Loss per Genre', fontsize=14, fontweight='bold')
+    bars = ax.bar(x_pos, hamming_per_genre, alpha=0.8, color="#d62728")
+
+    ax.set_xlabel("Genre", fontsize=12)
+    ax.set_ylabel("Hamming Loss (Error Rate)", fontsize=12)
+    ax.set_title("Hamming Loss per Genre", fontsize=14, fontweight="bold")
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(mlb.classes_, rotation=45, ha='right')
-    ax.grid(axis='y', alpha=0.3)
-    
+    ax.set_xticklabels(mlb.classes_, rotation=45, ha="right")
+    ax.grid(axis="y", alpha=0.3)
+
     # Add value labels on bars
     for bar in bars:
         height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-               f'{height:.3f}',
-               ha='center', va='bottom', fontsize=9)
-    
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height,
+            f"{height:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Hamming loss per genre plot saved to {output_path}")
 
@@ -406,7 +455,7 @@ def plot_genre_confusion_patterns(
 ) -> None:
     """
     Plot confusion patterns showing false positives and false negatives between genres.
-    
+
     Args:
         y_true: True binary labels (n_samples, n_labels)
         y_pred: Predicted binary labels (n_samples, n_labels)
@@ -416,7 +465,7 @@ def plot_genre_confusion_patterns(
     """
     n_genres = len(mlb.classes_)
     confusion_matrix = np.zeros((n_genres, n_genres))
-    
+
     # Calculate confusion: false positives (predicted but not true)
     # and false negatives (true but not predicted)
     for i in range(n_genres):
@@ -426,26 +475,28 @@ def plot_genre_confusion_patterns(
                 confusion_matrix[i, j] = ((y_true[:, i] == 1) & (y_pred[:, i] == 1)).sum()
             else:
                 # Off-diagonal: predicted j when true is i (false positives for j)
-                confusion_matrix[i, j] = ((y_true[:, i] == 1) & (y_pred[:, j] == 1) & (y_pred[:, i] == 0)).sum()
-    
+                confusion_matrix[i, j] = (
+                    (y_true[:, i] == 1) & (y_pred[:, j] == 1) & (y_pred[:, i] == 0)
+                ).sum()
+
     fig, ax = plt.subplots(figsize=figsize)
     sns.heatmap(
         confusion_matrix,
         annot=True,
-        fmt='.0f',
-        cmap='Reds',
+        fmt=".0f",
+        cmap="Reds",
         xticklabels=mlb.classes_,
         yticklabels=mlb.classes_,
-        cbar_kws={'label': 'Count'},
+        cbar_kws={"label": "Count"},
         square=True,
     )
-    ax.set_xlabel('Predicted Genre', fontsize=12)
-    ax.set_ylabel('True Genre', fontsize=12)
-    ax.set_title('Genre Confusion Patterns (False Positives)', fontsize=14, fontweight='bold')
-    plt.xticks(rotation=45, ha='right')
+    ax.set_xlabel("Predicted Genre", fontsize=12)
+    ax.set_ylabel("True Genre", fontsize=12)
+    ax.set_title("Genre Confusion Patterns (False Positives)", fontsize=14, fontweight="bold")
+    plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"Genre confusion patterns plot saved to {output_path}")
 
@@ -482,11 +533,11 @@ def main(
         threshold: Probability threshold for predictions (default: 0.5)
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     logger.info("=" * 70)
     logger.info("Loading model and data")
     logger.info("=" * 70)
-    
+
     # Load model
     if model_path is None:
         logger.debug("No model path provided, searching for default model...")
@@ -536,7 +587,7 @@ def main(
     logger.info("=" * 70)
     logger.info("Making predictions")
     logger.info("=" * 70)
-    logger.info(f"Generating prediction probabilities...")
+    logger.info("Generating prediction probabilities...")
     X_array = X.values if isinstance(X, pd.DataFrame) else X
     y_proba = model.predict_proba(X_array)
     logger.info(f"Applying threshold={threshold} to generate binary predictions...")
@@ -548,68 +599,77 @@ def main(
     logger.info("=" * 70)
     logger.info("Generating plots")
     logger.info("=" * 70)
-    
+
     model_name = get_model_name(model)
-    
+
     # Generate per-label precision and recall plot
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_true, y_pred_binary, average=None, zero_division=0
     )
-    
+
     # Create precision/recall/F1 bar plot per genre
     logger.info("Creating precision/recall/F1 plot per genre...")
     fig, ax = plt.subplots(figsize=(14, 8))
     x_pos = np.arange(len(mlb.classes_))
     width = 0.25
-    
-    ax.bar(x_pos - width, precision, width, label='Precision', alpha=0.8, color='#ff7f0e')
-    ax.bar(x_pos, recall, width, label='Recall', alpha=0.8, color='#2ca02c')
-    ax.bar(x_pos + width, f1, width, label='F1 Score', alpha=0.8, color='#1f77b4')
-    
-    ax.set_xlabel('Genre', fontsize=12)
-    ax.set_ylabel('Score', fontsize=12)
-    ax.set_title(f'Precision, Recall, and F1 Score by Genre - {model_name}', fontsize=14, fontweight='bold')
+
+    ax.bar(x_pos - width, precision, width, label="Precision", alpha=0.8, color="#ff7f0e")
+    ax.bar(x_pos, recall, width, label="Recall", alpha=0.8, color="#2ca02c")
+    ax.bar(x_pos + width, f1, width, label="F1 Score", alpha=0.8, color="#1f77b4")
+
+    ax.set_xlabel("Genre", fontsize=12)
+    ax.set_ylabel("Score", fontsize=12)
+    ax.set_title(
+        f"Precision, Recall, and F1 Score by Genre - {model_name}", fontsize=14, fontweight="bold"
+    )
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(mlb.classes_, rotation=45, ha='right')
+    ax.set_xticklabels(mlb.classes_, rotation=45, ha="right")
     ax.set_ylim(0, 1)
     ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-    
+    ax.grid(axis="y", alpha=0.3)
+
     plt.tight_layout()
     precision_recall_path = output_dir / f"precision_recall_{model_name}.png"
-    plt.savefig(precision_recall_path, dpi=300, bbox_inches='tight')
+    plt.savefig(precision_recall_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"✓ Precision/recall/F1 plot saved to {precision_recall_path}")
 
     # Generate overall metrics plot
     logger.info("Creating overall metrics plot...")
-    overall_f1 = f1_score(y_true, y_pred_binary, average='macro')
-    overall_precision = precision_score(y_true, y_pred_binary, average='macro', zero_division=0)
-    overall_recall = recall_score(y_true, y_pred_binary, average='macro', zero_division=0)
-    hamming = hamming_loss(y_true, y_pred_binary)
-    jaccard = jaccard_score(y_true, y_pred_binary, average='macro', zero_division=0)
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    metrics = ['F1 Score', 'Precision', 'Recall', 'Jaccard Score']
+    overall_f1 = f1_score(y_true, y_pred_binary, average="macro")
+    overall_precision = precision_score(y_true, y_pred_binary, average="macro", zero_division=0)
+    overall_recall = recall_score(y_true, y_pred_binary, average="macro", zero_division=0)
+    jaccard = jaccard_score(y_true, y_pred_binary, average="macro", zero_division=0)
+
+    fig, ax = plt.subplots(figsize=(10, 6))  # pyright: ignore[reportUnusedVariable]
+    metrics = ["F1 Score", "Precision", "Recall", "Jaccard Score"]
     scores = [overall_f1, overall_precision, overall_recall, jaccard]
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-    
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
+
     bars = ax.bar(metrics, scores, color=colors, alpha=0.8)
-    ax.set_ylabel('Score', fontsize=12)
-    ax.set_title(f'Overall Model Performance Metrics - {model_name}', fontsize=14, fontweight='bold')
+    ax.set_ylabel("Score", fontsize=12)
+    ax.set_title(
+        f"Overall Model Performance Metrics - {model_name}", fontsize=14, fontweight="bold"
+    )
     ax.set_ylim(0, 1)
-    ax.grid(axis='y', alpha=0.3)
-    
+    ax.grid(axis="y", alpha=0.3)
+
     # Add value labels on bars
     for bar, score in zip(bars, scores):
         height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{score:.3f}',
-                ha='center', va='bottom', fontsize=11, fontweight='bold')
-    
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height,
+            f"{score:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=11,
+            fontweight="bold",
+        )
+
     plt.tight_layout()
     metrics_path = output_dir / f"metrics_{model_name}.png"
-    plt.savefig(metrics_path, dpi=300, bbox_inches='tight')
+    plt.savefig(metrics_path, dpi=300, bbox_inches="tight")
     plt.close()
     logger.success(f"✓ Metrics plot saved to {metrics_path}")
 

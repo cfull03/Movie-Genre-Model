@@ -14,7 +14,6 @@ from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim
 from descriptions.modeling.model import build_model, get_model_name, save_model
 from descriptions.modeling.preprocess import (
-    build_preprocessor,
     _generate_descriptions,
     _generate_targets,
     save_preprocessors,
@@ -54,6 +53,7 @@ def split_data(
     if mlb is None:
         try:
             from descriptions.modeling.preprocess import load_preprocessors
+
             _, mlb = load_preprocessors()
             logger.info("Loaded MultiLabelBinarizer from saved model")
         except FileNotFoundError:
@@ -213,9 +213,7 @@ def train_test_split_data(
         f"Train/test split: {1 - test_size:.0%} train, {test_size:.0%} test "
         f"(random_state={random_state}, shuffle={shuffle})"
     )
-    logger.info(
-        f"Split complete: {len(X_train)} training samples, {len(X_test)} test samples"
-    )
+    logger.info(f"Split complete: {len(X_train)} training samples, {len(X_test)} test samples")
     return X_train, X_test, y_train, y_test
 
 

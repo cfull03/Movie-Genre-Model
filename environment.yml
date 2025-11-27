@@ -21,4 +21,6 @@ dependencies:
       - python-dotenv==1.2.1
       - mkdocs==1.6.1
       - mlflow==2.14.0  # Optional: for experiment tracking and model management
+      - fastapi==0.115.0
+      - uvicorn[standard]==0.32.0
       - -e .

@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.metrics import f1_score, hamming_loss, jaccard_score, precision_score, recall_score
 import typer
 
-from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim, load_processed
 from descriptions.modeling.model import get_model_name, load_model
 from descriptions.modeling.preprocess import load_preprocessors
