@@ -4,58 +4,352 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-We are going to use NLP models to see if we can predict the genres of a movie based on it description.
+A production-ready machine learning pipeline for predicting movie genres from textual descriptions using TF-IDF vectorization and multi-label classification with Logistic Regression.
 
-## Project Organization
+## 🎯 Project Overview
+
+This project implements an end-to-end machine learning pipeline for multi-label genre classification. Given a movie description, the model predicts one or more genres (e.g., Action, Drama, Comedy) that best describe the movie. The system uses scikit-learn's TF-IDF vectorization combined with OneVsRestClassifier strategy for handling multiple labels per movie.
+
+### Key Features
+
+- **Multi-label Classification**: Predicts multiple genres per movie (e.g., "Action, Adventure, Thriller")
+- **Production-Ready Pipeline**: Complete workflow from raw data to trained model
+- **MLflow Integration**: Comprehensive experiment tracking and model versioning
+- **Optimized Performance**: Achieves **84.76% F1-score**, **81.24% precision**, and **88.59% recall**
+- **Comprehensive Logging**: Detailed progress tracking and error handling
+
+## 📊 Model Performance
+
+The trained model achieves excellent performance on the test set:
+
+| Metric | Score | Interpretation |
+|--------|-------|----------------|
+| **F1 Score** | 84.76% | Strong overall precision-recall balance |
+| **Precision** | 81.24% | High accuracy when predicting genres |
+| **Recall** | 88.59% | Captures most true genres |
+| **Hamming Loss** | 4.69% | Very low error rate |
+| **Jaccard Score** | 73.55% | Strong overlap between predicted and true genres |
+
+See the [Model Evaluation Report](reports/model_evaluation_report.md) for detailed analysis.
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.12
+- Conda (for environment management)
+
+### Installation
+
+1. **Clone the repository** (if applicable):
+   ```bash
+   git clone <repository-url>
+   cd movie_genre_model
+   ```
+
+2. **Create and activate the conda environment**:
+   ```bash
+   conda env create -f environment.yml
+   conda activate movie_genre_model
+   ```
+
+3. **Install the package**:
+   ```bash
+   pip install -e .
+   ```
+
+### Running the Pipeline
+
+The project uses a Makefile for convenient command execution. Run `make help` to see all available commands.
+
+#### Complete Pipeline (Recommended)
+
+Run the entire pipeline from data processing to model evaluation:
+
+```bash
+make train    # Processes data, trains model, and evaluates
+```
+
+#### Step-by-Step Execution
+
+1. **Process raw data**:
+   ```bash
+   make data
+   ```
+   This loads raw movie data and performs basic cleaning.
+
+2. **Train the model** (Recommended):
+   ```bash
+   make train
+   ```
+   This will:
+   - Load interim data
+   - Split into train/test sets **before** preprocessing (prevents data leakage)
+   - Fit TF-IDF and label encoding on **training data only**
+   - Transform both train and test sets
+   - Train the multi-label classifier and save it to `models/`
+
+3. **Preprocess data** (Optional - for exploration/evaluation only):
+   ```bash
+   make preprocess
+   ```
+   ⚠️ **Warning**: This fits preprocessors on the entire dataset, causing data leakage if used for training.
+   Only use this for exploratory analysis or evaluation on pre-processed datasets.
+
+4. **Evaluate the model**:
+   ```bash
+   make evaluate
+   ```
+   Evaluates the trained model on interim data (transforms using saved preprocessors from training).
+   The evaluation pipeline automatically uses the preprocessors saved during training, ensuring
+   consistent feature representation.
+
+#### Making Predictions
+
+Predict genres for a single description:
+```bash
+python -m descriptions.modeling.predict \
+    --description "A thrilling action movie about a spy who saves the world"
+```
+
+Predict genres from a CSV file:
+```bash
+python -m descriptions.modeling.predict \
+    --input-file data/test_movies.csv \
+    --output-file predictions.csv
+```
+
+## 📁 Project Organization
 
 ```
-├── LICENSE            <- Open-source license if one is chosen
-├── Makefile           <- Makefile with convenience commands like `make data` or `make train`
-├── README.md          <- The top-level README for developers using this project.
-├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-│   └── raw            <- The original, immutable data dump.
+├── LICENSE            <- Open-source license
+├── Makefile           <- Convenience commands for common tasks
+├── README.md          <- This file
+├── environment.yml    <- Conda environment specification
+├── pyproject.toml     <- Project configuration
 │
-├── docs               <- A default mkdocs project; see www.mkdocs.org for details
+├── data/
+│   ├── external/      <- Data from third party sources
+│   ├── interim/      <- Intermediate data (cleaned)
+│   ├── processed/    <- Final canonical datasets
+│   └── raw/          <- Original immutable data dump
 │
-├── models             <- Trained and serialized models, model predictions, or model summaries
+├── descriptions/      <- Source code package
+│   ├── __init__.py
+│   ├── config.py     <- Configuration and paths
+│   ├── dataset.py    <- Data loading and processing
+│   ├── modeling/
+│   │   ├── preprocess.py  <- TF-IDF and label encoding
+│   │   ├── train.py      <- Model training
+│   │   ├── evaluate.py    <- Model evaluation
+│   │   ├── predict.py    <- Inference/prediction
+│   │   └── model.py      <- Model building utilities
+│   └── plots.py      <- Visualization utilities
 │
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
+├── models/           <- Trained models and preprocessors
+│   ├── logisticregression.joblib
+│   ├── tfidf_vectorizer.joblib
+│   ├── genre_binarizer.joblib
+│   └── metrics_logisticregression.json
 │
-├── pyproject.toml     <- Project configuration file with package metadata for 
-│                         descriptions and configuration for tools like black
+├── mlruns/           <- MLflow experiment tracking
 │
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
+├── notebooks/        <- Jupyter notebooks for exploration
 │
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
+├── reports/          <- Generated analysis and reports
+│   ├── figures/     <- Visualization outputs
+│   └── model_evaluation_report.md
 │
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
+├── tests/            <- Unit tests
 │
-├── setup.cfg          <- Configuration file for flake8
-│
-└── descriptions   <- Source code for use in this project.
-    │
-    ├── __init__.py             <- Makes descriptions a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    ├── dataset.py              <- Scripts to download or generate data
-    │
-    ├── features.py             <- Code to create features for modeling
-    │
-    ├── modeling                
-    │   ├── __init__.py 
-    │   ├── predict.py          <- Code to run model inference with trained models          
-    │   └── train.py            <- Code to train models
-    │
-    └── plots.py                <- Code to create visualizations
+└── docs/             <- Documentation (MkDocs)
 ```
 
---------
+## 🔧 Configuration
 
+### Model Hyperparameters
+
+The model uses the following optimized hyperparameters:
+
+- **C**: 50.0 (regularization strength)
+- **Penalty**: L2 (Ridge regularization)
+- **Solver**: lbfgs
+- **Max Iterations**: 2000
+- **Class Weight**: balanced (handles class imbalance)
+
+### Preprocessing Parameters
+
+- **Max Features**: 20,000 TF-IDF features
+- **N-gram Range**: (1, 2) - unigrams and bigrams
+- **Stop Words**: English stop words removed
+- **Sublinear TF**: True (log scaling for term frequencies)
+
+### Customization
+
+You can customize hyperparameters when training:
+
+```bash
+python -m descriptions.modeling.train \
+    --C 100.0 \
+    --penalty l2 \
+    --solver lbfgs \
+    --max-iter 3000
+```
+
+## 📈 MLflow Integration
+
+The project uses MLflow for experiment tracking. All training runs are automatically logged with:
+
+- Model hyperparameters
+- Preprocessing parameters
+- Training metrics
+- Model artifacts
+
+View experiments:
+```bash
+mlflow ui
+```
+
+Then open `http://localhost:5000` in your browser.
+
+## 🧪 Testing
+
+Run the test suite:
+
+```bash
+make test
+```
+
+Or run specific tests:
+```bash
+pytest tests/
+```
+
+## 📝 Usage Examples
+
+### Example 1: Complete Pipeline
+
+```bash
+# Complete end-to-end pipeline (recommended)
+make evaluate
+# This runs: data → train → evaluate
+# All steps are connected and handle data leakage prevention automatically
+```
+
+Or step-by-step:
+```bash
+# Process raw data
+make data
+
+# Train model (splits before preprocessing, saves model + preprocessors)
+make train
+
+# Evaluate model (uses saved preprocessors to transform interim data)
+make evaluate
+```
+
+### Example 2: Custom Training
+
+```bash
+python -m descriptions.modeling.train \
+    --C 50.0 \
+    --penalty l2 \
+    --solver lbfgs \
+    --max-iter 2000 \
+    --test-size 0.2 \
+    --random-state 42
+```
+
+**Note**: The training pipeline automatically handles train/test splitting **before** preprocessing to prevent data leakage. TF-IDF and label encoding are fitted only on training data.
+
+### Example 3: Prediction with Custom Threshold
+
+```bash
+python -m descriptions.modeling.predict \
+    --description "A romantic comedy about two people who fall in love" \
+    --threshold 0.4
+```
+
+Lower thresholds predict more genres, higher thresholds are more conservative.
+
+## 🛠️ Development
+
+### Code Formatting
+
+Format code:
+```bash
+make format
+```
+
+Check formatting:
+```bash
+make lint
+```
+
+### Adding New Features
+
+The codebase follows a modular structure:
+- `dataset.py`: Data loading and cleaning
+- `preprocess.py`: Feature engineering (TF-IDF, label encoding) - ⚠️ For exploration/evaluation only
+- `train.py`: Model training logic (handles train/test split before preprocessing to prevent data leakage)
+- `evaluate.py`: Model evaluation and metrics
+- `predict.py`: Inference pipeline
+
+**Important**: The training pipeline (`train.py`) properly splits data before fitting preprocessors to avoid data leakage. The standalone `preprocess.py` script fits on the entire dataset and should only be used for exploratory analysis.
+
+## 📊 Model Architecture
+
+### Approach
+
+The model uses a **OneVsRestClassifier** strategy:
+- One binary classifier per genre
+- Each classifier learns to distinguish one genre from all others
+- Allows independent prediction of multiple genres per movie
+
+### Base Classifier
+
+- **Algorithm**: Logistic Regression
+- **Regularization**: L2 (Ridge)
+- **Optimization**: L-BFGS solver
+- **Class Weighting**: Balanced (handles imbalanced genres)
+
+### Feature Engineering
+
+- **Text Vectorization**: TF-IDF with 20,000 features
+- **N-grams**: Unigrams and bigrams
+- **Sublinear TF**: Log scaling for better feature representation
+- **Stop Words**: Removed common English words
+
+## 📚 Documentation
+
+- [Model Evaluation Report](reports/model_evaluation_report.md) - Detailed performance analysis
+- [Getting Started Guide](docs/docs/getting-started.md) - Setup instructions
+- Code documentation available via docstrings
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+See [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built using the [Cookiecutter Data Science](https://drivendata.github.io/cookiecutter-data-science/) project template
+- Uses scikit-learn for machine learning
+- MLflow for experiment tracking
+
+## 📧 Contact
+
+For questions or issues, please open an issue on the repository.
+
+---
+
+**Last Updated**: November 2025  
+**Model Version**: 1.0  
+**Performance**: 84.76% F1-score, 4.69% Hamming Loss

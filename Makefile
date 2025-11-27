@@ -79,16 +79,19 @@ data: requirements
 	$(PYTHON_INTERPRETER) descriptions/dataset.py
 
 
+## Preprocess data (WARNING: Fits on entire dataset - for exploration/evaluation only)
 .PHONY: preprocess
 preprocess: data
 	$(PYTHON_INTERPRETER) descriptions/modeling/preprocess.py
 
 
+## Train model (splits data before preprocessing to prevent data leakage)
 .PHONY: train
-train: preprocess
+train: data
 	$(PYTHON_INTERPRETER) descriptions/modeling/train.py
 
 ## Evaluate model (optionally specify MODEL_PATH, e.g., make evaluate MODEL_PATH=logisticregression.joblib)
+## Note: Uses interim data by default. Use --use-processed flag to evaluate on processed data.
 .PHONY: evaluate
 evaluate: train
 ifdef MODEL_PATH
@@ -96,6 +99,11 @@ ifdef MODEL_PATH
 else
 	$(PYTHON_INTERPRETER) descriptions/modeling/evaluate.py
 endif
+
+
+.PHONY: plots
+plots:
+	$(PYTHON_INTERPRETER) descriptions/plots.py
 
 #################################################################################
 # Self Documenting Commands                                                     #
