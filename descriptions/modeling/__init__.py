@@ -44,6 +44,7 @@ from .preprocess import (
 from .train import (
     split_data,
     train_model,
+    train_test_split_data,
 )
 
 __all__ = [
@@ -61,6 +62,7 @@ __all__ = [
     # Training
     "split_data",
     "train_model",
+    "train_test_split_data",
     # Evaluation
     "evaluate_model",
     "save_metrics",
