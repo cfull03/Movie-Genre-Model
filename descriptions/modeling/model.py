@@ -110,10 +110,13 @@ def load_model(model_name: Union[str, Path]) -> Any:
 
 
 def build_model(
-    C: float = 1.0,
-    penalty: str = "l1",
-    solver: str = "liblinear",
-    max_iter: int = 1000,
+    C: float = 50.0,
+    penalty: str = "l2",
+    solver: str = "lbfgs",
+    max_iter: int = 2000,
+    class_weight: Optional[str] = "balanced",
+    tol: float = 1e-3,
+    multi_class: str = "multinomial",
 ) -> OneVsRestClassifier:
     """
     Build the main classification model for multi-label genre prediction.
@@ -122,22 +125,38 @@ def build_model(
     This allows predicting multiple genres (labels) for each movie description.
 
     Args:
-        C: Inverse of regularization strength (default: 1.0). Smaller values specify stronger regularization.
-        penalty: Type of regularization penalty ('l1' or 'l2', default: 'l1')
-        solver: Algorithm to use for optimization (default: 'liblinear', required for L1 penalty)
-        max_iter: Maximum number of iterations for convergence (default: 1000)
+        C: Inverse of regularization strength (default: 50.0).
+           Smaller values = stronger regularization.
+        penalty: Type of regularization penalty ('l1' or 'l2', default: 'l2')
+        solver: Algorithm to use for optimization (default: 'lbfgs', works with L2 penalty)
+        max_iter: Maximum number of iterations for convergence (default: 2000)
+        class_weight: Weights associated with classes. 'balanced' adjusts weights
+                     inversely proportional to class frequencies (default: 'balanced')
+        tol: Tolerance for stopping criteria (default: 1e-3)
+        multi_class: Strategy for multi-class classification (default: 'multinomial')
 
     Returns:
         OneVsRestClassifier with LogisticRegression base estimator
 
     Note:
-        The 'liblinear' solver is required when using L1 penalty. For L2 penalty,
-        you can use 'lbfgs' or 'sag' solvers as well.
+        The 'lbfgs' solver works well with L2 penalty. For L1 penalty, use 'liblinear' solver.
     """
+    logger.debug(
+        f"Building OneVsRestClassifier with LogisticRegression: "
+        f"C={C}, penalty={penalty}, solver={solver}, max_iter={max_iter}"
+    )
     base_estimator = LogisticRegression(
-        C=C, penalty=penalty, solver=solver, max_iter=max_iter, random_state=42
+        C=C,
+        penalty=penalty,
+        solver=solver,
+        max_iter=max_iter,
+        class_weight=class_weight,
+        tol=tol,
+        multi_class=multi_class,
+        random_state=42,
     )
     clf = OneVsRestClassifier(base_estimator)
+    logger.debug("OneVsRestClassifier built successfully")
     return clf
 
 
