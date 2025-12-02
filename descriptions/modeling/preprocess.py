@@ -216,7 +216,7 @@ def save_preprocessors(
 
 @app.command()
 def main(
-    input_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
+    input_path: Path = INTERIM_DATA_DIR / "merged_movies.csv",
     output_path: Path = PROCESSED_DATA_DIR / "processed_movies.csv",
     force: bool = False,
 ) -> None:
@@ -227,13 +227,16 @@ def main(
     if the processed data is later used for training with train/test splits. For training,
     use the training pipeline in train.py which properly splits data before fitting preprocessors.
 
+    The default data source is merged_movies.csv, which combines top_movies.csv
+    with wiki_movie_plots_deduped.csv for enriched descriptions and genres.
+
     This function is intended for:
     - Exploratory data analysis
     - Creating baseline datasets for evaluation
     - Visualization purposes
 
     Args:
-        input_path: Path to cleaned interim data CSV file
+        input_path: Path to merged interim data CSV file (defaults to merged_movies.csv)
         output_path: Path where processed data will be saved
         force: If True, reprocess even if outputs already exist (default: False)
     """
