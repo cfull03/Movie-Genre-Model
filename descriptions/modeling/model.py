@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 import joblib
 from loguru import logger
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
 
@@ -110,53 +110,57 @@ def load_model(model_name: Union[str, Path]) -> Any:
 
 
 def build_model(
-    C: float = 50.0,
-    penalty: str = "l2",
-    solver: str = "lbfgs",
+    loss: str = "modified_huber",
+    penalty: str = "elasticnet",
+    alpha: float = 0.0001,
+    learning_rate: str = "optimal",
     max_iter: int = 2000,
-    class_weight: Optional[str] = "balanced",
     tol: float = 1e-3,
-    multi_class: str = "multinomial",
+    early_stopping: bool = True,
 ) -> OneVsRestClassifier:
     """
     Build the main classification model for multi-label genre prediction.
 
-    Uses OneVsRestClassifier strategy with LogisticRegression as the base estimator.
+    Uses OneVsRestClassifier strategy with SGDClassifier as the base estimator.
     This allows predicting multiple genres (labels) for each movie description.
+    
+    Default parameters are optimized via Grid Search (see model_testing.ipynb).
 
     Args:
-        C: Inverse of regularization strength (default: 50.0).
-           Smaller values = stronger regularization.
-        penalty: Type of regularization penalty ('l1' or 'l2', default: 'l2')
-        solver: Algorithm to use for optimization (default: 'lbfgs', works with L2 penalty)
+        loss: Loss function ('hinge', 'log_loss', 'modified_huber', default: 'modified_huber')
+        penalty: Type of regularization penalty ('l1', 'l2', 'elasticnet', default: 'elasticnet')
+        alpha: Regularization strength (default: 0.0001). Smaller values = less regularization.
+        learning_rate: Learning rate schedule ('constant', 'optimal', 'invscaling', 'adaptive', default: 'optimal')
         max_iter: Maximum number of iterations for convergence (default: 2000)
-        class_weight: Weights associated with classes. 'balanced' adjusts weights
-                     inversely proportional to class frequencies (default: 'balanced')
         tol: Tolerance for stopping criteria (default: 1e-3)
-        multi_class: Strategy for multi-class classification (default: 'multinomial')
+        early_stopping: Use early stopping if validation score doesn't improve (default: True)
 
     Returns:
-        OneVsRestClassifier with LogisticRegression base estimator
+        OneVsRestClassifier with SGDClassifier base estimator
 
     Note:
-        The 'lbfgs' solver works well with L2 penalty. For L1 penalty, use 'liblinear' solver.
+        Best parameters from Grid Search:
+        - loss='modified_huber', penalty='elasticnet', alpha=0.0001
+        - learning_rate='optimal', max_iter=2000, tol=0.001, early_stopping=True
     """
     logger.debug(
-        f"Building OneVsRestClassifier with LogisticRegression: "
-        f"C={C}, penalty={penalty}, solver={solver}, max_iter={max_iter}"
+        f"Building OneVsRestClassifier with SGDClassifier: "
+        f"loss={loss}, penalty={penalty}, alpha={alpha}, "
+        f"learning_rate={learning_rate}, max_iter={max_iter}"
     )
-    base_estimator = LogisticRegression(
-        C=C,
+    base_estimator = SGDClassifier(
+        loss=loss,
         penalty=penalty,
-        solver=solver,
+        alpha=alpha,
+        learning_rate=learning_rate,
         max_iter=max_iter,
-        class_weight=class_weight,
         tol=tol,
-        multi_class=multi_class,
+        early_stopping=early_stopping,
         random_state=42,
+        n_jobs=-1,
     )
     clf = OneVsRestClassifier(base_estimator)
-    logger.debug("OneVsRestClassifier built successfully")
+    logger.debug("OneVsRestClassifier built successfully with SGDClassifier")
     return clf
 
 
@@ -185,7 +189,7 @@ def build_pipeline(
         mlb_path: Path to saved MultiLabelBinarizer (only used if use_fitted_preprocessor=True).
             If None, uses default path from MODELS_DIR. Note: mlb is loaded but not used in pipeline.
         model_params: Optional dictionary of parameters to pass to build_model().
-            Keys can include: 'C', 'penalty', 'solver', 'max_iter'.
+            Keys can include: 'loss', 'penalty', 'alpha', 'learning_rate', 'max_iter', 'tol', 'early_stopping'.
 
     Returns:
         Pipeline object with 'vectorizer' and 'model' steps.
@@ -226,7 +230,7 @@ def get_params(model: Any) -> Dict[str, Any]:
     Extract key parameters from a model's base estimator.
 
     For OneVsRestClassifier models, extracts parameters from the underlying
-    base estimator (e.g., LogisticRegression).
+    base estimator (e.g., SGDClassifier).
 
     Args:
         model: Model object (OneVsRestClassifier, Pipeline, or base estimator)
@@ -257,15 +261,21 @@ def get_params(model: Any) -> Dict[str, Any]:
     # Extract key parameters
     params = {}
 
-    # Common parameters for LogisticRegression and similar classifiers
-    if hasattr(base_estimator, "C"):
-        params["C"] = base_estimator.C
+    # SGDClassifier parameters
+    if hasattr(base_estimator, "loss"):
+        params["loss"] = base_estimator.loss
     if hasattr(base_estimator, "penalty"):
         params["penalty"] = base_estimator.penalty
-    if hasattr(base_estimator, "solver"):
-        params["solver"] = base_estimator.solver
+    if hasattr(base_estimator, "alpha"):
+        params["alpha"] = base_estimator.alpha
+    if hasattr(base_estimator, "learning_rate"):
+        params["learning_rate"] = base_estimator.learning_rate
     if hasattr(base_estimator, "max_iter"):
         params["max_iter"] = base_estimator.max_iter
+    if hasattr(base_estimator, "tol"):
+        params["tol"] = base_estimator.tol
+    if hasattr(base_estimator, "early_stopping"):
+        params["early_stopping"] = base_estimator.early_stopping
     if hasattr(base_estimator, "random_state"):
         params["random_state"] = base_estimator.random_state
 
