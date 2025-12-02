@@ -160,7 +160,7 @@ def main(
         None,
         help="Path to the saved model file. If not provided, automatically finds a scikit-learn model.",
     ),
-    data_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
+    data_path: Path = INTERIM_DATA_DIR / "merged_movies.csv",
     metrics_path: Optional[Path] = None,
     experiment_name: str = "movie-genre-classification",
     run_id: Optional[str] = None,
@@ -174,14 +174,18 @@ def main(
     Evaluate a trained model on test data and save metrics.
 
     This function can work with either:
-    1. Interim data (default): Loads raw data and transforms using saved preprocessors
+    1. Interim data (default): Loads merged data and transforms using saved preprocessors
     2. Processed data (--use-processed): Uses already-processed data with TF-IDF features
+
+    The default data source is merged_movies.csv, which combines top_movies.csv
+    with wiki_movie_plots_deduped.csv for enriched descriptions and genres.
 
     For training, use train.py which properly handles train/test splits before preprocessing.
 
     Args:
         model_path: Path to the saved model file (as string). If None, automatically finds a scikit-learn model.
-        data_path: Path to the data CSV file (interim or processed, depending on use_processed flag)
+        data_path: Path to the data CSV file (interim or processed, depending on use_processed flag).
+                  Defaults to merged_movies.csv (enriched with wiki data).
         metrics_path: Path where metrics will be saved. If None, uses metrics_{model_name}.json
         experiment_name: MLflow experiment name (default: "movie-genre-classification")
         run_id: Optional MLflow run ID to log metrics to. If None and no active run, starts new run.
@@ -265,9 +269,9 @@ def main(
             logger.info("Splitting processed data into features (X) and labels (y)...")
             X, y, mlb = split_data(data)
         else:
-            logger.info(f"Loading interim data from {data_path}...")
+            logger.info(f"Loading merged interim data from {data_path}...")
             data = load_interim(data_path)
-            logger.success(f"✓ Interim data loaded successfully: {len(data)} samples")
+            logger.success(f"✓ Merged interim data loaded successfully: {len(data)} samples")
             logger.info("Loading saved preprocessors...")
             vectorizer, mlb = load_preprocessors()
             logger.success("✓ Preprocessors loaded successfully")
