@@ -1,6 +1,6 @@
+import json
 from pathlib import Path
 from typing import Optional, Tuple
-import json
 
 from loguru import logger
 import mlflow
@@ -222,9 +222,11 @@ def save_parameters(model_params_dict: dict, model_name: str) -> None:
     """
     Save model parameters to a JSON file.
     """
-    with open(MODELS_DIR / f'{model_name}_parameters.json', 'w') as f:
+    with open(MODELS_DIR / f"{model_name}_parameters.json", "w") as f:
         json.dump(model_params_dict, f)
-    logger.success(f"✓ Parameters saved successfully to {MODELS_DIR / f'{model_name}_parameters.json'}")
+    logger.success(
+        f"✓ Parameters saved successfully to {MODELS_DIR / f'{model_name}_parameters.json'}"
+    )
 
 
 @app.command()
@@ -239,11 +241,17 @@ def main(
     # Model hyperparameters (best parameters from Grid Search)
     loss: str = typer.Option("modified_huber", "--loss", help="Loss function for SGDClassifier"),
     penalty: str = typer.Option("elasticnet", "--penalty", help="Penalty type for SGDClassifier"),
-    alpha: float = typer.Option(0.0001, "--alpha", help="Regularization strength for SGDClassifier"),
-    learning_rate: str = typer.Option("optimal", "--learning-rate", help="Learning rate schedule for SGDClassifier"),
+    alpha: float = typer.Option(
+        0.0001, "--alpha", help="Regularization strength for SGDClassifier"
+    ),
+    learning_rate: str = typer.Option(
+        "optimal", "--learning-rate", help="Learning rate schedule for SGDClassifier"
+    ),
     max_iter: int = typer.Option(2000, "--max-iter", help="Max iterations for SGDClassifier"),
     tol: float = typer.Option(1e-3, "--tol", help="Tolerance for SGDClassifier"),
-    early_stopping: bool = typer.Option(True, "--early-stopping/--no-early-stopping", help="Use early stopping for SGDClassifier"),
+    early_stopping: bool = typer.Option(
+        True, "--early-stopping/--no-early-stopping", help="Use early stopping for SGDClassifier"
+    ),
 ) -> None:
     """
     Train a movie genre classification model.
@@ -422,16 +430,13 @@ def main(
             save_model(model, final_model_path)
             logger.success(f"✓ Model saved successfully to {final_model_path}")
 
-
             logger.info("=" * 70)
             logger.info("Saving Parameters")
             logger.info("=" * 70)
-            params_file = MODELS_DIR / f'{model_name}_parameters.json'
+            params_file = MODELS_DIR / f"{model_name}_parameters.json"
             logger.info(f"Saved Parameters to {params_file}...")
             save_parameters(model_params_dict, model_name)
             logger.success(f"✓ Parameters saved successfully to {params_file}")
-
-
 
             # Save model to MLflow
             logger.info("Logging model artifact to MLflow...")

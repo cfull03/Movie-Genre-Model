@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 import joblib
 from loguru import logger
-from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.linear_model import SGDClassifier
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
 
@@ -123,7 +123,7 @@ def build_model(
 
     Uses OneVsRestClassifier strategy with SGDClassifier as the base estimator.
     This allows predicting multiple genres (labels) for each movie description.
-    
+
     Default parameters are optimized via Grid Search (see model_testing.ipynb).
 
     Args:
