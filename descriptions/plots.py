@@ -507,7 +507,7 @@ def main(
         None,
         help="Path to the saved model file. If not provided, automatically finds a scikit-learn model.",
     ),
-    data_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
+    data_path: Path = INTERIM_DATA_DIR / "merged_movies.csv",
     output_dir: Path = FIGURES_DIR,
     use_processed: bool = typer.Option(
         False,
@@ -525,9 +525,13 @@ def main(
     This function loads a trained model, makes predictions on data, and generates
     visualization plots including confusion matrices and precision/recall metrics.
 
+    The default data source is merged_movies.csv, which combines top_movies.csv
+    with wiki_movie_plots_deduped.csv for enriched descriptions and genres.
+
     Args:
         model_path: Path to the saved model file. If None, automatically finds a scikit-learn model.
-        data_path: Path to the data CSV file (interim or processed, depending on use_processed flag)
+        data_path: Path to the data CSV file (interim or processed, depending on use_processed flag).
+                  Defaults to merged_movies.csv (enriched with wiki data).
         output_dir: Directory where plots will be saved
         use_processed: If True, expects processed data. If False, uses interim data and transforms it.
         threshold: Probability threshold for predictions (default: 0.5)
@@ -571,9 +575,9 @@ def main(
         logger.info("Splitting processed data into features (X) and labels (y)...")
         X, y_true, mlb = split_data(data)
     else:
-        logger.info(f"Loading interim data from {data_path}...")
+        logger.info(f"Loading merged interim data from {data_path}...")
         data = load_interim(data_path)
-        logger.success(f"✓ Interim data loaded successfully: {len(data)} samples")
+        logger.success(f"✓ Merged interim data loaded successfully: {len(data)} samples")
         logger.info("Loading saved preprocessors...")
         vectorizer, mlb = load_preprocessors()
         logger.success("✓ Preprocessors loaded successfully")
