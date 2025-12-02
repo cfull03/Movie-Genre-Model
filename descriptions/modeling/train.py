@@ -231,7 +231,7 @@ def save_parameters(model_params_dict: dict, model_name: str) -> None:
 
 @app.command()
 def main(
-    interim_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
+    interim_path: Path = INTERIM_DATA_DIR / "merged_movies.csv",
     model_path: Path = MODELS_DIR / "model.joblib",
     test_size: float = 0.2,
     random_state: int = 42,
@@ -256,12 +256,16 @@ def main(
     """
     Train a movie genre classification model.
 
-    This script loads interim movie data (with description and genre columns),
+    This script loads merged interim movie data (with description and genre columns),
     splits into train/test sets, fits TF-IDF and MLB on training data only,
     transforms both sets, and trains a multi-label classification model.
 
+    The default data source is merged_movies.csv, which combines top_movies.csv
+    with wiki_movie_plots_deduped.csv for enriched descriptions and genres.
+
     Args:
-        interim_path: Path to interim movies CSV file (with description and genre columns)
+        interim_path: Path to interim movies CSV file (with description and genre columns).
+                     Defaults to merged_movies.csv (enriched with wiki data).
         model_path: Path where the trained model will be saved
         test_size: Proportion of data to use for testing (default: 0.2)
         random_state: Random seed for reproducibility (default: 42)
@@ -339,11 +343,11 @@ def main(
                 return
 
             logger.info("=" * 70)
-            logger.info("Loading raw data")
+            logger.info("Loading merged dataset")
             logger.info("=" * 70)
-            logger.info(f"Loading interim data from {interim_path}...")
+            logger.info(f"Loading merged interim data from {interim_path}...")
             data = load_interim(interim_path)
-            logger.success(f"✓ Loaded {len(data)} samples from interim data")
+            logger.success(f"✓ Loaded {len(data)} samples from merged dataset")
 
             # Log data info to MLflow
             logger.debug("Logging data information to MLflow...")
