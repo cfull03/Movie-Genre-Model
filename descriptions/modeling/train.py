@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Optional, Tuple
+import json
 
 from loguru import logger
 import mlflow
@@ -162,7 +163,7 @@ def train_model(
 
     with tqdm(total=3, desc="Training model", unit="step") as pbar:
         # Build model (no vectorizer needed since features are already TF-IDF transformed)
-        pbar.set_description("Building OneVsRestClassifier with LogisticRegression")
+        pbar.set_description("Building OneVsRestClassifier with SGDClassifier")
         if model_params is None:
             model_params = {}
         model = build_model(**model_params)
@@ -217,6 +218,15 @@ def train_test_split_data(
     return X_train, X_test, y_train, y_test
 
 
+def save_parameters(model_params_dict: dict, model_name: str) -> None:
+    """
+    Save model parameters to a JSON file.
+    """
+    with open(MODELS_DIR / f'{model_name}_parameters.json', 'w') as f:
+        json.dump(model_params_dict, f)
+    logger.success(f"✓ Parameters saved successfully to {MODELS_DIR / f'{model_name}_parameters.json'}")
+
+
 @app.command()
 def main(
     interim_path: Path = INTERIM_DATA_DIR / "cleaned_movies.csv",
@@ -226,11 +236,14 @@ def main(
     force: bool = False,
     experiment_name: str = "movie-genre-classification",
     run_name: Optional[str] = None,
-    # Model hyperparameters
-    C: float = 50.0,
-    penalty: str = "l2",
-    solver: str = "lbfgs",
-    max_iter: int = 2000,
+    # Model hyperparameters (best parameters from Grid Search)
+    loss: str = typer.Option("modified_huber", "--loss", help="Loss function for SGDClassifier"),
+    penalty: str = typer.Option("elasticnet", "--penalty", help="Penalty type for SGDClassifier"),
+    alpha: float = typer.Option(0.0001, "--alpha", help="Regularization strength for SGDClassifier"),
+    learning_rate: str = typer.Option("optimal", "--learning-rate", help="Learning rate schedule for SGDClassifier"),
+    max_iter: int = typer.Option(2000, "--max-iter", help="Max iterations for SGDClassifier"),
+    tol: float = typer.Option(1e-3, "--tol", help="Tolerance for SGDClassifier"),
+    early_stopping: bool = typer.Option(True, "--early-stopping/--no-early-stopping", help="Use early stopping for SGDClassifier"),
 ) -> None:
     """
     Train a movie genre classification model.
@@ -247,10 +260,13 @@ def main(
         force: If True, retrain even if model already exists (default: False)
         experiment_name: MLflow experiment name (default: "movie-genre-classification")
         run_name: Optional name for MLflow run. If None, auto-generated from hyperparameters
-        C: Inverse of regularization strength (default: 50.0). Smaller values = stronger regularization.
-        penalty: Type of regularization penalty - 'l1' or 'l2' (default: 'l2')
-        solver: Algorithm to use for optimization (default: 'lbfgs', works with L2 penalty)
+        loss: Loss function for SGDClassifier (default: 'modified_huber')
+        penalty: Type of regularization penalty - 'l1', 'l2', or 'elasticnet' (default: 'elasticnet')
+        alpha: Regularization strength (default: 0.0001). Smaller values = less regularization.
+        learning_rate: Learning rate schedule - 'constant', 'optimal', 'invscaling', or 'adaptive' (default: 'optimal')
         max_iter: Maximum number of iterations for convergence (default: 2000)
+        tol: Tolerance for stopping criteria (default: 1e-3)
+        early_stopping: Use early stopping if validation score doesn't improve (default: True)
     """
     # Set up MLflow experiment
     logger.info("=" * 70)
@@ -265,7 +281,7 @@ def main(
 
     # Generate run name from hyperparameters if not provided
     if run_name is None:
-        run_name = f"C{C}_penalty-{penalty}_solver-{solver}_maxiter-{max_iter}"
+        run_name = f"SGD_loss-{loss}_penalty-{penalty}_alpha{alpha}_lr-{learning_rate}"
     logger.info(f"MLflow run name: '{run_name}'")
 
     # Start MLflow run - each unique parameter combination creates a new run
@@ -280,10 +296,13 @@ def main(
 
             # Build model params dict from command line arguments
             model_params_dict = {
-                "C": C,
+                "loss": loss,
                 "penalty": penalty,
-                "solver": solver,
+                "alpha": alpha,
+                "learning_rate": learning_rate,
                 "max_iter": max_iter,
+                "tol": tol,
+                "early_stopping": early_stopping,
             }
 
             # Build model to get its name (needed for default path)
@@ -301,7 +320,7 @@ def main(
             for key, value in model_params_dict.items():
                 mlflow.log_param(f"model_{key}", value)
                 logger.debug(f"  model_{key} = {value}")
-            mlflow.set_tag("model_type", "LogisticRegression-OneVsRest")
+            mlflow.set_tag("model_type", "SGDClassifier-OneVsRest")
             mlflow.set_tag("task", "multi-label-classification")
             logger.success("Model parameters logged to MLflow")
 
@@ -389,7 +408,9 @@ def main(
             logger.info("Training multi-label classification model")
             logger.info("=" * 70)
             logger.info(
-                f"Training model with hyperparameters: C={C}, penalty={penalty}, solver={solver}, max_iter={max_iter}"
+                f"Training SGDClassifier model with hyperparameters: "
+                f"loss={loss}, penalty={penalty}, alpha={alpha}, "
+                f"learning_rate={learning_rate}, max_iter={max_iter}"
             )
             model = train_model(X_train, y_train, model_params=model_params_dict)
             logger.success("✓ Model training completed successfully!")
@@ -397,9 +418,20 @@ def main(
             logger.info("=" * 70)
             logger.info("Saving trained model")
             logger.info("=" * 70)
-            logger.info(f"Saving trained model to {final_model_path}...")
+            logger.info(f"Saved trained model to {final_model_path}...")
             save_model(model, final_model_path)
             logger.success(f"✓ Model saved successfully to {final_model_path}")
+
+
+            logger.info("=" * 70)
+            logger.info("Saving Parameters")
+            logger.info("=" * 70)
+            params_file = MODELS_DIR / f'{model_name}_parameters.json'
+            logger.info(f"Saved Parameters to {params_file}...")
+            save_parameters(model_params_dict, model_name)
+            logger.success(f"✓ Parameters saved successfully to {params_file}")
+
+
 
             # Save model to MLflow
             logger.info("Logging model artifact to MLflow...")
