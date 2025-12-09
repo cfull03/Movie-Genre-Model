@@ -272,7 +272,7 @@ def main(
             vectorizer, mlb = load_preprocessors()
             logger.success("✓ Preprocessors loaded successfully")
             logger.info("Transforming data using saved preprocessors...")
-            X, y, _, _ = prepare_features_and_labels(data, vectorizer=vectorizer, mlb=mlb)
+            X, y, _, _, _ = prepare_features_and_labels(data, vectorizer=vectorizer, mlb=mlb)
             logger.success(
                 f"✓ Data transformed: {X.shape[0]} samples, {X.shape[1]} features, {y.shape[1]} labels"
             )
