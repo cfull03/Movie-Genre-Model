@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 import joblib
 from loguru import logger
-from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
 
@@ -110,57 +110,66 @@ def load_model(model_name: Union[str, Path]) -> Any:
 
 
 def build_model(
-    loss: str = "modified_huber",
+    C: float = 1.0,
     penalty: str = "elasticnet",
-    alpha: float = 0.0001,
-    learning_rate: str = "optimal",
-    max_iter: int = 2000,
+    solver: str = "saga",
+    l1_ratio: float = 0.5,
+    max_iter: int = 1000,
     tol: float = 1e-3,
-    early_stopping: bool = True,
+    class_weight: str = "balanced",
+    # Legacy SGDClassifier parameters (for backward compatibility)
+    loss: str = None,
+    alpha: float = None,
+    learning_rate: str = None,
+    early_stopping: bool = None,
 ) -> OneVsRestClassifier:
     """
     Build the main classification model for multi-label genre prediction.
 
-    Uses OneVsRestClassifier strategy with SGDClassifier as the base estimator.
+    Uses OneVsRestClassifier strategy with LogisticRegression as the base estimator.
     This allows predicting multiple genres (labels) for each movie description.
 
-    Default parameters are optimized via Grid Search (see model_testing.ipynb).
+    Default parameters are optimized via cross-validation (see overfitting_testing.ipynb).
 
     Args:
-        loss: Loss function ('hinge', 'log_loss', 'modified_huber', default: 'modified_huber')
+        C: Regularization strength (default: 1.0). Larger values = less regularization.
         penalty: Type of regularization penalty ('l1', 'l2', 'elasticnet', default: 'elasticnet')
-        alpha: Regularization strength (default: 0.0001). Smaller values = less regularization.
-        learning_rate: Learning rate schedule ('constant', 'optimal', 'invscaling', 'adaptive', default: 'optimal')
-        max_iter: Maximum number of iterations for convergence (default: 2000)
+        solver: Algorithm to use ('lbfgs', 'liblinear', 'saga', default: 'saga' for elasticnet)
+        l1_ratio: Balance between L1 and L2 for elasticnet (default: 0.5)
+        max_iter: Maximum number of iterations for convergence (default: 1000)
         tol: Tolerance for stopping criteria (default: 1e-3)
-        early_stopping: Use early stopping if validation score doesn't improve (default: True)
+        class_weight: Class weight strategy ('balanced' or None, default: 'balanced')
+        loss: Legacy parameter (ignored, kept for backward compatibility)
+        alpha: Legacy parameter (ignored, kept for backward compatibility)
+        learning_rate: Legacy parameter (ignored, kept for backward compatibility)
+        early_stopping: Legacy parameter (ignored, kept for backward compatibility)
 
     Returns:
-        OneVsRestClassifier with SGDClassifier base estimator
+        OneVsRestClassifier with LogisticRegression base estimator
 
     Note:
-        Best parameters from Grid Search:
-        - loss='modified_huber', penalty='elasticnet', alpha=0.0001
-        - learning_rate='optimal', max_iter=2000, tol=0.001, early_stopping=True
+        Best parameters from cross-validation:
+        - C=1.0, penalty='elasticnet', solver='saga', l1_ratio=0.5
+        - max_iter=1000, tol=1e-3, class_weight='balanced'
     """
     logger.debug(
-        f"Building OneVsRestClassifier with SGDClassifier: "
-        f"loss={loss}, penalty={penalty}, alpha={alpha}, "
-        f"learning_rate={learning_rate}, max_iter={max_iter}"
+        f"Building OneVsRestClassifier with LogisticRegression: "
+        f"C={C}, penalty={penalty}, solver={solver}, "
+        f"l1_ratio={l1_ratio}, max_iter={max_iter}, class_weight={class_weight}"
     )
-    base_estimator = SGDClassifier(
-        loss=loss,
+    base_estimator = LogisticRegression(
+        C=C,
         penalty=penalty,
-        alpha=alpha,
-        learning_rate=learning_rate,
+        solver=solver,
+        l1_ratio=l1_ratio if penalty == "elasticnet" else None,
         max_iter=max_iter,
         tol=tol,
-        early_stopping=early_stopping,
+        class_weight=class_weight,
         random_state=42,
         n_jobs=-1,
     )
     clf = OneVsRestClassifier(base_estimator)
-    logger.debug("OneVsRestClassifier built successfully with SGDClassifier")
+    logger.debug("OneVsRestClassifier built successfully with LogisticRegression")
     return clf
 
 
@@ -261,23 +270,33 @@ def get_params(model: Any) -> Dict[str, Any]:
     # Extract key parameters
     params = {}
 
-    # SGDClassifier parameters
-    if hasattr(base_estimator, "loss"):
-        params["loss"] = base_estimator.loss
+    # LogisticRegression parameters
+    if hasattr(base_estimator, "C"):
+        params["C"] = base_estimator.C
     if hasattr(base_estimator, "penalty"):
         params["penalty"] = base_estimator.penalty
-    if hasattr(base_estimator, "alpha"):
-        params["alpha"] = base_estimator.alpha
-    if hasattr(base_estimator, "learning_rate"):
-        params["learning_rate"] = base_estimator.learning_rate
+    if hasattr(base_estimator, "solver"):
+        params["solver"] = base_estimator.solver
+    if hasattr(base_estimator, "l1_ratio"):
+        params["l1_ratio"] = base_estimator.l1_ratio
     if hasattr(base_estimator, "max_iter"):
         params["max_iter"] = base_estimator.max_iter
     if hasattr(base_estimator, "tol"):
         params["tol"] = base_estimator.tol
-    if hasattr(base_estimator, "early_stopping"):
-        params["early_stopping"] = base_estimator.early_stopping
+    if hasattr(base_estimator, "class_weight"):
+        params["class_weight"] = base_estimator.class_weight
     if hasattr(base_estimator, "random_state"):
         params["random_state"] = base_estimator.random_state
+    
+    # Legacy SGDClassifier parameters (for backward compatibility)
+    if hasattr(base_estimator, "loss"):
+        params["loss"] = base_estimator.loss
+    if hasattr(base_estimator, "alpha"):
+        params["alpha"] = base_estimator.alpha
+    if hasattr(base_estimator, "learning_rate"):
+        params["learning_rate"] = base_estimator.learning_rate
+    if hasattr(base_estimator, "early_stopping"):
+        params["early_stopping"] = base_estimator.early_stopping
 
     return params
 
