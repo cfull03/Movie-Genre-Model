@@ -64,16 +64,18 @@ def _preprocess_genres(data: pd.DataFrame) -> pd.DataFrame:
 def _generate_targets(
     data: pd.DataFrame,
     mlb: Optional[MultiLabelBinarizer] = None,
-) -> Tuple[np.ndarray, MultiLabelBinarizer]:
+    min_genre_percentage: float = 5.0,
+) -> Tuple[np.ndarray, MultiLabelBinarizer, pd.Series]:
     """
-    Generate multi-label targets from the genre column.
+    Generate multi-label targets from the genre column, filtering out rare genres.
 
     Args:
         data: DataFrame with 'genre' column containing genre lists
         mlb: Optional pre-fitted MultiLabelBinarizer. If None, creates and fits a new one.
+        min_genre_percentage: Minimum percentage of samples a genre must appear in to be kept (default: 5.0)
 
     Returns:
-        Tuple of (binary label array, MultiLabelBinarizer)
+        Tuple of (binary label array, MultiLabelBinarizer, filtered data index)
     """
     logger.info(f"Generating multi-label targets from {len(data)} samples...")
 
@@ -82,19 +84,63 @@ def _generate_targets(
 
     if mlb is None:
         logger.debug("Creating and fitting new MultiLabelBinarizer")
-        _, mlb = build_preprocessor()
-        y = mlb.fit_transform(genres_list)
+        # Step 1: Analyze genre frequencies to identify rare genres
+        logger.info(f"Analyzing genre frequencies (removing genres < {min_genre_percentage}%)...")
+        mlb_temp = MultiLabelBinarizer()
+        y_temp = mlb_temp.fit_transform(genres_list)
+        
+        # Calculate genre frequencies and percentages
+        genre_counts = y_temp.sum(axis=0)
+        genre_percentages = (genre_counts / len(y_temp)) * 100
+        
+        # Identify genres to remove
+        genres_to_remove = set()
+        for i, (genre, percentage) in enumerate(zip(mlb_temp.classes_, genre_percentages)):
+            if percentage < min_genre_percentage:
+                genres_to_remove.add(genre)
+                logger.debug(f"  Removing '{genre}': {percentage:.2f}% ({int(genre_counts[i])} samples)")
+        
+        if genres_to_remove:
+            logger.info(f"Identified {len(genres_to_remove)} genres to remove: {sorted(genres_to_remove)}")
+        
+        # Step 2: Filter out rare genres from genre lists
+        genres_list_filtered = genres_list.apply(
+            lambda genres: sorted({g for g in genres if g not in genres_to_remove})
+        )
+        
+        # Count how many samples lost all genres
+        samples_lost = (genres_list_filtered.apply(len) == 0).sum()
+        if samples_lost > 0:
+            logger.warning(f"{samples_lost} samples lost all genres after filtering and will be removed")
+            keep_mask = genres_list_filtered.apply(len) > 0
+            genres_list_filtered = genres_list_filtered[keep_mask]
+            data = data[keep_mask]
+            logger.info(f"Removed {samples_lost} samples with no genres")
+        
+        # Step 3: Fit MultiLabelBinarizer on filtered training data
+        logger.debug("Fitting MultiLabelBinarizer on filtered genre lists")
+        mlb = MultiLabelBinarizer()
+        y = mlb.fit_transform(genres_list_filtered)
         n_labels = len(mlb.classes_)
         logger.info(f"MultiLabelBinarizer fitted: {n_labels} unique genre labels identified")
+        logger.info(f"Genres kept: {sorted(mlb.classes_)}")
     else:
         logger.debug("Using pre-fitted MultiLabelBinarizer for transformation")
-        y = mlb.transform(genres_list)
+        # Filter genres to only those in mlb.classes_
+        genres_list_filtered = genres_list.apply(
+            lambda genres: sorted({g for g in genres if g in mlb.classes_})
+        )
+        # Remove samples that lost all genres
+        keep_mask = genres_list_filtered.apply(len) > 0
+        genres_list_filtered = genres_list_filtered[keep_mask]
+        data = data[keep_mask]
+        y = mlb.transform(genres_list_filtered)
         logger.info(
             f"Transformed labels using existing MultiLabelBinarizer ({len(mlb.classes_)} labels)"
         )
 
     logger.success(f"Targets generated: shape {y.shape} (samples × labels)")
-    return y, mlb
+    return y, mlb, data.index
 
 
 def _generate_descriptions(
@@ -106,7 +152,9 @@ def _generate_descriptions(
 
     Args:
         data: DataFrame with 'description' column containing text descriptions
-        vectorizer: Optional pre-fitted TfidfVectorizer. If None, creates and fits a new one.
+        vectorizer: Optional TfidfVectorizer. If None, creates and fits a new one with defaults.
+                   If provided but not fitted (no vocabulary_ attribute), fits it on the data.
+                   If provided and already fitted, uses it to transform the data.
 
     Returns:
         Tuple of (sparse TF-IDF feature matrix, TfidfVectorizer)
@@ -119,7 +167,7 @@ def _generate_descriptions(
         logger.warning(f"Found {n_empty} samples with empty descriptions")
 
     if vectorizer is None:
-        logger.debug("Creating and fitting new TfidfVectorizer")
+        logger.debug("Creating and fitting new TfidfVectorizer with default parameters")
         vectorizer, _ = build_preprocessor()
         X_desc = vectorizer.fit_transform(texts)
         logger.info(
@@ -127,11 +175,20 @@ def _generate_descriptions(
             f"(max_features={vectorizer.max_features})"
         )
     else:
-        logger.debug("Using pre-fitted TfidfVectorizer for transformation")
-        X_desc = vectorizer.transform(texts)
-        logger.info(
-            f"Transformed descriptions using existing TfidfVectorizer ({X_desc.shape[1]} features)"
-        )
+        # Check if vectorizer is already fitted by checking for vocabulary_ attribute
+        if hasattr(vectorizer, 'vocabulary_') and vectorizer.vocabulary_ is not None:
+            logger.debug("Using pre-fitted TfidfVectorizer for transformation")
+            X_desc = vectorizer.transform(texts)
+            logger.info(
+                f"Transformed descriptions using existing TfidfVectorizer ({X_desc.shape[1]} features)"
+            )
+        else:
+            logger.debug("Fitting provided TfidfVectorizer with custom parameters")
+            X_desc = vectorizer.fit_transform(texts)
+            logger.info(
+                f"TfidfVectorizer fitted with custom parameters: {X_desc.shape[1]} features extracted "
+                f"(max_features={vectorizer.max_features}, ngram_range={vectorizer.ngram_range})"
+            )
 
     logger.success(f"Description features generated: sparse matrix shape {X_desc.shape}")
     return X_desc, vectorizer
@@ -147,14 +204,18 @@ def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer]:
     """
     logger.debug("Building preprocessing components: TfidfVectorizer and MultiLabelBinarizer")
     vectorizer = TfidfVectorizer(
-        max_features=20000,
+        max_features=10000,
         stop_words="english",
         ngram_range=(1, 2),
         sublinear_tf=True,
+        max_df=0.7,
+        min_df=3,
+        use_idf=True,
     )
     mlb = MultiLabelBinarizer()
     logger.debug(
-        "TfidfVectorizer configured: max_features=20000, ngram_range=(1,2), sublinear_tf=True"
+        "TfidfVectorizer configured: max_features=10000, ngram_range=(1,2), "
+        "sublinear_tf=True, max_df=0.7, min_df=3"
     )
     return vectorizer, mlb
 
@@ -266,7 +327,14 @@ def main(
     logger.info("=" * 70)
     logger.info("Step 2/4: Generating multi-label genre targets")
     logger.info("=" * 70)
-    y, mlb = _generate_targets(data)
+    y, mlb, filtered_index = _generate_targets(data)
+    # Filter X to match filtered data
+    if len(filtered_index) < len(data):
+        logger.debug(f"Filtering features to match filtered data: {len(filtered_index)} samples")
+        index_map = {idx: i for i, idx in enumerate(data.index)}
+        filtered_positions = [index_map[idx] for idx in filtered_index]
+        X = X[filtered_positions]
+        data = data.loc[filtered_index]
     logger.success(f"Genre targets generated: {y.shape[0]} samples × {y.shape[1]} labels")
 
     logger.info("=" * 70)
