@@ -8,6 +8,7 @@ import mlflow.sklearn
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import SelectKBest, chi2
 from tqdm import tqdm
 import typer
 
@@ -104,7 +105,9 @@ def prepare_features_and_labels(
     data: pd.DataFrame,
     vectorizer=None,
     mlb=None,
-) -> Tuple[pd.DataFrame, np.ndarray, object, object]:
+    feature_selector=None,
+    k_features: int = 7000,
+) -> Tuple[pd.DataFrame, np.ndarray, object, object, object]:
     """
     Generate TF-IDF features and multi-label targets from raw data.
 
@@ -115,21 +118,45 @@ def prepare_features_and_labels(
         data: DataFrame with 'description' and 'genre' columns
         vectorizer: Optional pre-fitted TfidfVectorizer. If None, creates and fits a new one.
         mlb: Optional pre-fitted MultiLabelBinarizer. If None, creates and fits a new one.
+        feature_selector: Optional pre-fitted SelectKBest. If None, creates and fits a new one.
+        k_features: Number of features to select (default: 7000)
 
     Returns:
-        Tuple of (features_df, labels_array, vectorizer, mlb)
+        Tuple of (features_df, labels_array, vectorizer, mlb, feature_selector)
     """
     logger.info("Generating TF-IDF features from descriptions...")
     X_sparse, vectorizer = _generate_descriptions(data, vectorizer=vectorizer)
 
     logger.info("Generating multi-label genre targets...")
-    y, mlb = _generate_targets(data, mlb=mlb)
+    y, mlb, filtered_index = _generate_targets(data, mlb=mlb)
+    
+    # Filter X_sparse to match filtered data
+    if len(filtered_index) < len(data):
+        logger.debug(f"Filtering features to match filtered data: {len(filtered_index)} samples")
+        # Get the positions of filtered indices in original data
+        index_map = {idx: i for i, idx in enumerate(data.index)}
+        filtered_positions = [index_map[idx] for idx in filtered_index]
+        X_sparse = X_sparse[filtered_positions]
+
+    # Apply feature selection
+    if feature_selector is None:
+        logger.info(f"Applying feature selection with SelectKBest (k={k_features})...")
+        feature_selector = SelectKBest(score_func=chi2, k=k_features)
+        X_sparse = feature_selector.fit_transform(X_sparse, y)
+        logger.success(
+            f"Feature selection complete: {X_sparse.shape[1]} features selected "
+            f"(from {vectorizer.max_features} original features)"
+        )
+    else:
+        logger.info("Using pre-fitted feature selector for transformation")
+        X_sparse = feature_selector.transform(X_sparse)
+        logger.info(f"Features transformed: {X_sparse.shape[1]} features")
 
     # Convert sparse matrix to dense DataFrame
     logger.debug("Converting sparse TF-IDF matrix to dense DataFrame...")
     X_df = pd.DataFrame(
         X_sparse.toarray(),
-        index=data.index,
+        index=filtered_index,
         columns=[f"tfidf_{i}" for i in range(X_sparse.shape[1])],
     )
 
@@ -138,7 +165,7 @@ def prepare_features_and_labels(
         f"{X_df.shape[1]} features, {y.shape[1]} labels"
     )
 
-    return X_df, y, vectorizer, mlb
+    return X_df, y, vectorizer, mlb, feature_selector
 
 
 def train_model(
@@ -238,20 +265,15 @@ def main(
     force: bool = False,
     experiment_name: str = "movie-genre-classification",
     run_name: Optional[str] = None,
-    # Model hyperparameters (best parameters from Grid Search)
-    loss: str = typer.Option("modified_huber", "--loss", help="Loss function for SGDClassifier"),
-    penalty: str = typer.Option("elasticnet", "--penalty", help="Penalty type for SGDClassifier"),
-    alpha: float = typer.Option(
-        0.0001, "--alpha", help="Regularization strength for SGDClassifier"
-    ),
-    learning_rate: str = typer.Option(
-        "optimal", "--learning-rate", help="Learning rate schedule for SGDClassifier"
-    ),
-    max_iter: int = typer.Option(2000, "--max-iter", help="Max iterations for SGDClassifier"),
-    tol: float = typer.Option(1e-3, "--tol", help="Tolerance for SGDClassifier"),
-    early_stopping: bool = typer.Option(
-        True, "--early-stopping/--no-early-stopping", help="Use early stopping for SGDClassifier"
-    ),
+    # Model hyperparameters (best parameters from cross-validation)
+    C: float = typer.Option(1.0, "--C", help="Regularization strength for LogisticRegression (larger = less regularization)"),
+    penalty: str = typer.Option("elasticnet", "--penalty", help="Penalty type for LogisticRegression"),
+    solver: str = typer.Option("saga", "--solver", help="Solver algorithm for LogisticRegression"),
+    l1_ratio: float = typer.Option(0.5, "--l1-ratio", help="L1 ratio for elasticnet penalty"),
+    max_iter: int = typer.Option(1000, "--max-iter", help="Max iterations for LogisticRegression"),
+    tol: float = typer.Option(1e-3, "--tol", help="Tolerance for LogisticRegression"),
+    class_weight: str = typer.Option("balanced", "--class-weight", help="Class weight strategy"),
+    k_features: int = typer.Option(7000, "--k-features", help="Number of features to select with SelectKBest"),
 ) -> None:
     """
     Train a movie genre classification model.
@@ -268,13 +290,14 @@ def main(
         force: If True, retrain even if model already exists (default: False)
         experiment_name: MLflow experiment name (default: "movie-genre-classification")
         run_name: Optional name for MLflow run. If None, auto-generated from hyperparameters
-        loss: Loss function for SGDClassifier (default: 'modified_huber')
+        C: Regularization strength for LogisticRegression (default: 1.0). Larger values = less regularization.
         penalty: Type of regularization penalty - 'l1', 'l2', or 'elasticnet' (default: 'elasticnet')
-        alpha: Regularization strength (default: 0.0001). Smaller values = less regularization.
-        learning_rate: Learning rate schedule - 'constant', 'optimal', 'invscaling', or 'adaptive' (default: 'optimal')
-        max_iter: Maximum number of iterations for convergence (default: 2000)
+        solver: Solver algorithm - 'lbfgs', 'liblinear', or 'saga' (default: 'saga' for elasticnet)
+        l1_ratio: Balance between L1 and L2 for elasticnet (default: 0.5)
+        max_iter: Maximum number of iterations for convergence (default: 1000)
         tol: Tolerance for stopping criteria (default: 1e-3)
-        early_stopping: Use early stopping if validation score doesn't improve (default: True)
+        class_weight: Class weight strategy - 'balanced' or None (default: 'balanced')
+        k_features: Number of features to select with SelectKBest (default: 7000)
     """
     # Set up MLflow experiment
     logger.info("=" * 70)
@@ -287,31 +310,31 @@ def main(
         mlflow.set_experiment(experiment_name)
         logger.info(f"✓ Using existing MLflow experiment: '{experiment_name}'")
 
-    # Generate run name from hyperparameters if not provided
-    if run_name is None:
-        run_name = f"SGD_loss-{loss}_penalty-{penalty}_alpha{alpha}_lr-{learning_rate}"
-    logger.info(f"MLflow run name: '{run_name}'")
+            # Generate run name from hyperparameters if not provided
+            if run_name is None:
+                run_name = f"LogisticRegression_C{C}_penalty-{penalty}_solver-{solver}_k{k_features}"
+            logger.info(f"MLflow run name: '{run_name}'")
 
-    # Start MLflow run - each unique parameter combination creates a new run
-    with mlflow.start_run(run_name=run_name):
-        try:
-            # Determine final model path early to check if it exists
-            default_model_path = MODELS_DIR / "model.joblib"
-            is_default_path = (
-                model_path.resolve() == default_model_path.resolve()
-                or model_path.name == "model.joblib"
-            )
+            # Start MLflow run - each unique parameter combination creates a new run
+            with mlflow.start_run(run_name=run_name):
+                try:
+                    # Determine final model path early to check if it exists
+                    default_model_path = MODELS_DIR / "model.joblib"
+                    is_default_path = (
+                        model_path.resolve() == default_model_path.resolve()
+                        or model_path.name == "model.joblib"
+                    )
 
-            # Build model params dict from command line arguments
-            model_params_dict = {
-                "loss": loss,
-                "penalty": penalty,
-                "alpha": alpha,
-                "learning_rate": learning_rate,
-                "max_iter": max_iter,
-                "tol": tol,
-                "early_stopping": early_stopping,
-            }
+                    # Build model params dict from command line arguments
+                    model_params_dict = {
+                        "C": C,
+                        "penalty": penalty,
+                        "solver": solver,
+                        "l1_ratio": l1_ratio,
+                        "max_iter": max_iter,
+                        "tol": tol,
+                        "class_weight": class_weight,
+                    }
 
             # Build model to get its name (needed for default path)
             # This is fast since we're just creating an untrained model
@@ -328,8 +351,9 @@ def main(
             for key, value in model_params_dict.items():
                 mlflow.log_param(f"model_{key}", value)
                 logger.debug(f"  model_{key} = {value}")
-            mlflow.set_tag("model_type", "SGDClassifier-OneVsRest")
+            mlflow.set_tag("model_type", "LogisticRegression-OneVsRest")
             mlflow.set_tag("task", "multi-label-classification")
+            mlflow.log_param("k_features", k_features)
             logger.success("Model parameters logged to MLflow")
 
             # Check if model already exists (before loading data)
@@ -372,8 +396,8 @@ def main(
             logger.info("Fitting preprocessors on training data")
             logger.info("=" * 70)
             logger.info("Generating TF-IDF features and labels from training data...")
-            X_train, y_train, vectorizer, mlb = prepare_features_and_labels(
-                data_train, vectorizer=None, mlb=None
+            X_train, y_train, vectorizer, mlb, feature_selector = prepare_features_and_labels(
+                data_train, vectorizer=None, mlb=None, feature_selector=None, k_features=k_features
             )
             logger.success(
                 f"✓ Preprocessors fitted on training data: {X_train.shape[1]} features, {y_train.shape[1]} labels"
@@ -383,8 +407,8 @@ def main(
             logger.info("=" * 70)
             logger.info("Transforming test data using fitted preprocessors")
             logger.info("=" * 70)
-            X_test, y_test, _, _ = prepare_features_and_labels(
-                data_test, vectorizer=vectorizer, mlb=mlb
+            X_test, y_test, _, _, _ = prepare_features_and_labels(
+                data_test, vectorizer=vectorizer, mlb=mlb, feature_selector=feature_selector
             )
             logger.success(
                 f"✓ Test data transformed: {X_test.shape[0]} samples, {X_test.shape[1]} features, {y_test.shape[1]} labels"
@@ -394,6 +418,11 @@ def main(
             logger.info("Saving fitted preprocessors...")
             save_preprocessors(vectorizer, mlb)
             logger.success("✓ Preprocessors saved")
+            
+            # Save feature selector
+            logger.info("Saving feature selector...")
+            save_model(feature_selector, "feature_selector")
+            logger.success("✓ Feature selector saved")
 
             # Log preprocessing parameters to MLflow
             logger.debug("Logging preprocessing parameters to MLflow...")
@@ -416,9 +445,9 @@ def main(
             logger.info("Training multi-label classification model")
             logger.info("=" * 70)
             logger.info(
-                f"Training SGDClassifier model with hyperparameters: "
-                f"loss={loss}, penalty={penalty}, alpha={alpha}, "
-                f"learning_rate={learning_rate}, max_iter={max_iter}"
+                f"Training LogisticRegression model with hyperparameters: "
+                f"C={C}, penalty={penalty}, solver={solver}, "
+                f"l1_ratio={l1_ratio}, max_iter={max_iter}, class_weight={class_weight}"
             )
             model = train_model(X_train, y_train, model_params=model_params_dict)
             logger.success("✓ Model training completed successfully!")
