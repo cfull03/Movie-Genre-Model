@@ -3,9 +3,9 @@ from typing import Any, Dict, Optional, Union
 
 import joblib
 from loguru import logger
-from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.svm import LinearSVC
 
 from descriptions.config import MODELS_DIR
 
@@ -110,66 +110,58 @@ def load_model(model_name: Union[str, Path]) -> Any:
 
 
 def build_model(
-    C: float = 1.0,
-    penalty: str = "elasticnet",
-    solver: str = "saga",
-    l1_ratio: float = 0.5,
+    C: float = 0.1,
+    penalty: str = "l2",
+    loss: str = "squared_hinge",
     max_iter: int = 1000,
     tol: float = 1e-3,
     class_weight: str = "balanced",
-    # Legacy SGDClassifier parameters (for backward compatibility)
-    loss: str = None,
-    alpha: float = None,
-    learning_rate: str = None,
-    early_stopping: bool = None,
+    dual: bool = False,
+    random_state: int = 42,
 ) -> OneVsRestClassifier:
     """
     Build the main classification model for multi-label genre prediction.
 
-    Uses OneVsRestClassifier strategy with LogisticRegression as the base estimator.
+    Uses OneVsRestClassifier strategy with LinearSVC as the base estimator.
     This allows predicting multiple genres (labels) for each movie description.
 
-    Default parameters are optimized via cross-validation (see overfitting_testing.ipynb).
+    Default parameters are optimized via cross-validation (see model_testing.ipynb).
 
     Args:
-        C: Regularization strength (default: 1.0). Larger values = less regularization.
-        penalty: Type of regularization penalty ('l1', 'l2', 'elasticnet', default: 'elasticnet')
-        solver: Algorithm to use ('lbfgs', 'liblinear', 'saga', default: 'saga' for elasticnet)
-        l1_ratio: Balance between L1 and L2 for elasticnet (default: 0.5)
+        C: Regularization strength (default: 0.1). Larger values = less regularization.
+        penalty: Type of regularization penalty ('l1' or 'l2', default: 'l2')
+        loss: Loss function ('hinge' or 'squared_hinge', default: 'squared_hinge')
         max_iter: Maximum number of iterations for convergence (default: 1000)
         tol: Tolerance for stopping criteria (default: 1e-3)
         class_weight: Class weight strategy ('balanced' or None, default: 'balanced')
-        loss: Legacy parameter (ignored, kept for backward compatibility)
-        alpha: Legacy parameter (ignored, kept for backward compatibility)
-        learning_rate: Legacy parameter (ignored, kept for backward compatibility)
-        early_stopping: Legacy parameter (ignored, kept for backward compatibility)
+        dual: Whether to solve the dual or primal optimization problem (default: False)
+        random_state: Random seed for reproducibility (default: 42)
 
     Returns:
-        OneVsRestClassifier with LogisticRegression base estimator
+        OneVsRestClassifier with LinearSVC base estimator
 
     Note:
-        Best parameters from cross-validation:
-        - C=1.0, penalty='elasticnet', solver='saga', l1_ratio=0.5
-        - max_iter=1000, tol=1e-3, class_weight='balanced'
+        Best parameters from cross-validation (model_testing.ipynb):
+        - C=0.1, penalty='l2', loss='squared_hinge', max_iter=1000
+        - tol=1e-3, class_weight='balanced', dual=False
     """
     logger.debug(
-        f"Building OneVsRestClassifier with LogisticRegression: "
-        f"C={C}, penalty={penalty}, solver={solver}, "
-        f"l1_ratio={l1_ratio}, max_iter={max_iter}, class_weight={class_weight}"
+        f"Building OneVsRestClassifier with LinearSVC: "
+        f"C={C}, penalty={penalty}, loss={loss}, "
+        f"max_iter={max_iter}, tol={tol}, class_weight={class_weight}, dual={dual}"
     )
-    base_estimator = LogisticRegression(
+    base_estimator = LinearSVC(
         C=C,
         penalty=penalty,
-        solver=solver,
-        l1_ratio=l1_ratio if penalty == "elasticnet" else None,
+        loss=loss,
         max_iter=max_iter,
         tol=tol,
         class_weight=class_weight,
-        random_state=42,
-        n_jobs=-1,
+        dual=dual,
+        random_state=random_state,
     )
     clf = OneVsRestClassifier(base_estimator)
-    logger.debug("OneVsRestClassifier built successfully with LogisticRegression")
+    logger.debug("OneVsRestClassifier built successfully with LinearSVC")
     return clf
 
 
@@ -198,7 +190,7 @@ def build_pipeline(
         mlb_path: Path to saved MultiLabelBinarizer (only used if use_fitted_preprocessor=True).
             If None, uses default path from MODELS_DIR. Note: mlb is loaded but not used in pipeline.
         model_params: Optional dictionary of parameters to pass to build_model().
-            Keys can include: 'loss', 'penalty', 'alpha', 'learning_rate', 'max_iter', 'tol', 'early_stopping'.
+            Keys can include: 'C', 'penalty', 'loss', 'max_iter', 'tol', 'class_weight', 'dual', 'random_state'.
 
     Returns:
         Pipeline object with 'vectorizer' and 'model' steps.
@@ -216,11 +208,11 @@ def build_pipeline(
     from .preprocess import build_preprocessor, load_preprocessors
 
     if use_fitted_preprocessor:
-        vectorizer, mlb = load_preprocessors(vectorizer_path, mlb_path)
+        vectorizer, mlb, _ = load_preprocessors(vectorizer_path, mlb_path)
         # Note: mlb is loaded but not used in pipeline - it's for label encoding/decoding
         logger.debug("Loaded fitted preprocessors (mlb loaded but not used in pipeline)")
     else:
-        vectorizer, _ = build_preprocessor()
+        vectorizer, _, _ = build_preprocessor()
         logger.debug("Created new unfitted preprocessor")
 
     # Build model with optional parameters
@@ -239,7 +231,7 @@ def get_params(model: Any) -> Dict[str, Any]:
     Extract key parameters from a model's base estimator.
 
     For OneVsRestClassifier models, extracts parameters from the underlying
-    base estimator (e.g., SGDClassifier).
+    base estimator (e.g., LinearSVC).
 
     Args:
         model: Model object (OneVsRestClassifier, Pipeline, or base estimator)
@@ -270,33 +262,29 @@ def get_params(model: Any) -> Dict[str, Any]:
     # Extract key parameters
     params = {}
 
-    # LogisticRegression parameters
+    # LinearSVC parameters
     if hasattr(base_estimator, "C"):
         params["C"] = base_estimator.C
     if hasattr(base_estimator, "penalty"):
         params["penalty"] = base_estimator.penalty
-    if hasattr(base_estimator, "solver"):
-        params["solver"] = base_estimator.solver
-    if hasattr(base_estimator, "l1_ratio"):
-        params["l1_ratio"] = base_estimator.l1_ratio
+    if hasattr(base_estimator, "loss"):
+        params["loss"] = base_estimator.loss
     if hasattr(base_estimator, "max_iter"):
         params["max_iter"] = base_estimator.max_iter
     if hasattr(base_estimator, "tol"):
         params["tol"] = base_estimator.tol
     if hasattr(base_estimator, "class_weight"):
         params["class_weight"] = base_estimator.class_weight
+    if hasattr(base_estimator, "dual"):
+        params["dual"] = base_estimator.dual
     if hasattr(base_estimator, "random_state"):
         params["random_state"] = base_estimator.random_state
-    
-    # Legacy SGDClassifier parameters (for backward compatibility)
-    if hasattr(base_estimator, "loss"):
-        params["loss"] = base_estimator.loss
-    if hasattr(base_estimator, "alpha"):
-        params["alpha"] = base_estimator.alpha
-    if hasattr(base_estimator, "learning_rate"):
-        params["learning_rate"] = base_estimator.learning_rate
-    if hasattr(base_estimator, "early_stopping"):
-        params["early_stopping"] = base_estimator.early_stopping
+
+    # Legacy LogisticRegression parameters (for backward compatibility)
+    if hasattr(base_estimator, "solver"):
+        params["solver"] = base_estimator.solver
+    if hasattr(base_estimator, "l1_ratio"):
+        params["l1_ratio"] = base_estimator.l1_ratio
 
     return params
 
