@@ -106,7 +106,7 @@ def prepare_features_and_labels(
     vectorizer=None,
     mlb=None,
     feature_selector=None,
-    k_features: int = 7000,
+    k_features: int = 4500,
 ) -> Tuple[pd.DataFrame, np.ndarray, object, object, object]:
     """
     Generate TF-IDF features and multi-label targets from raw data.
@@ -318,9 +318,9 @@ def main(
         mlflow.set_experiment(experiment_name)
         logger.info(f"✓ Using existing MLflow experiment: '{experiment_name}'")
 
-            # Generate run name from hyperparameters if not provided
-            if run_name is None:
-                run_name = f"LinearSVC_C{C}_penalty-{penalty}_loss-{loss}_k{k_features}"
+    # Generate run name from hyperparameters if not provided
+    if run_name is None:
+        run_name = f"LinearSVC_C{C}_penalty-{penalty}_loss-{loss}_k{k_features}"
     logger.info(f"MLflow run name: '{run_name}'")
 
     # Start MLflow run - each unique parameter combination creates a new run
