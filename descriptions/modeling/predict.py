@@ -3,6 +3,7 @@ from typing import List, Optional, Union
 
 from loguru import logger
 import pandas as pd
+from scipy.special import expit  # Sigmoid function for converting scores to probabilities
 import typer
 
 from descriptions.config import MODELS_DIR
@@ -15,7 +16,7 @@ app = typer.Typer()
 def predict_genres(
     descriptions: List[str],
     model_path: Optional[Union[str, Path]] = None,
-    threshold: float = 0.5,
+    threshold: float = 0.55,
 ) -> List[List[str]]:
     """
     Predict genres for a list of movie descriptions.
@@ -57,18 +58,31 @@ def predict_genres(
     logger.success(f"✓ Model loaded successfully: {model_path.name}")
 
     # Load preprocessors
-    logger.info("Loading preprocessors (TfidfVectorizer and MultiLabelBinarizer)...")
-    vectorizer, mlb = load_preprocessors()
+    logger.info("Loading preprocessors (TfidfVectorizer, MultiLabelBinarizer, and Feature Selector)...")
+    vectorizer, mlb, feature_selector = load_preprocessors()
     logger.success("✓ Preprocessors loaded successfully")
 
     # Transform descriptions to TF-IDF features
     logger.info(f"Transforming {len(descriptions)} descriptions to TF-IDF features...")
     X = vectorizer.transform(descriptions)
     logger.debug(f"TF-IDF features generated: shape {X.shape}")
+    
+    # Apply feature selection (same as training)
+    logger.info("Applying feature selection...")
+    X = feature_selector.transform(X)
+    logger.debug(f"Features after selection: shape {X.shape}")
 
     # Get prediction probabilities
-    logger.info("Generating prediction probabilities...")
-    y_proba = model.predict_proba(X)
+    # LinearSVC doesn't have predict_proba, so we use decision_function
+    # and convert scores to probabilities using sigmoid function
+    logger.info("Generating prediction scores...")
+    y_scores = model.decision_function(X)
+    logger.debug(f"Decision scores generated: shape {y_scores.shape}")
+    
+    # Convert scores to probabilities using sigmoid function
+    # sigmoid(x) = 1 / (1 + exp(-x))
+    logger.info("Converting scores to probabilities...")
+    y_proba = expit(y_scores)
     logger.debug(f"Probabilities generated: shape {y_proba.shape}")
 
     # Apply threshold to get binary predictions
@@ -124,10 +138,10 @@ def main(
         help="Column name in input file containing descriptions (default: 'description')",
     ),
     threshold: float = typer.Option(
-        0.5,
+        0.55,
         "--threshold",
         "-t",
-        help="Probability threshold for predictions (default: 0.5). Lower values predict more labels.",
+        help="Probability threshold for predictions (default: 0.55). Lower values predict more labels.",
     ),
 ) -> None:
     """
