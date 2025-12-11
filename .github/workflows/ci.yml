@@ -129,7 +129,7 @@ jobs:
             exit 1
           fi
           
-          if [ -f "models/tfidf_vectorizer.joblib" ] && [ -f "models/genre_binarizer.joblib" ]; then
+          if [ -f "models/tfidf_vectorizer.joblib" ] && [ -f "models/genre_binarizer.joblib" ] && [ -f "models/feature_selector.joblib" ]; then
             echo "✓ Preprocessor files created successfully"
           else
             echo "✗ Preprocessor files not found"
