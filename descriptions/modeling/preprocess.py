@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.preprocessing import MultiLabelBinarizer
 from tqdm import tqdm
 import typer
@@ -88,35 +89,41 @@ def _generate_targets(
         logger.info(f"Analyzing genre frequencies (removing genres < {min_genre_percentage}%)...")
         mlb_temp = MultiLabelBinarizer()
         y_temp = mlb_temp.fit_transform(genres_list)
-        
+
         # Calculate genre frequencies and percentages
         genre_counts = y_temp.sum(axis=0)
         genre_percentages = (genre_counts / len(y_temp)) * 100
-        
+
         # Identify genres to remove
         genres_to_remove = set()
         for i, (genre, percentage) in enumerate(zip(mlb_temp.classes_, genre_percentages)):
             if percentage < min_genre_percentage:
                 genres_to_remove.add(genre)
-                logger.debug(f"  Removing '{genre}': {percentage:.2f}% ({int(genre_counts[i])} samples)")
-        
+                logger.debug(
+                    f"  Removing '{genre}': {percentage:.2f}% ({int(genre_counts[i])} samples)"
+                )
+
         if genres_to_remove:
-            logger.info(f"Identified {len(genres_to_remove)} genres to remove: {sorted(genres_to_remove)}")
-        
+            logger.info(
+                f"Identified {len(genres_to_remove)} genres to remove: {sorted(genres_to_remove)}"
+            )
+
         # Step 2: Filter out rare genres from genre lists
         genres_list_filtered = genres_list.apply(
             lambda genres: sorted({g for g in genres if g not in genres_to_remove})
         )
-        
+
         # Count how many samples lost all genres
         samples_lost = (genres_list_filtered.apply(len) == 0).sum()
         if samples_lost > 0:
-            logger.warning(f"{samples_lost} samples lost all genres after filtering and will be removed")
+            logger.warning(
+                f"{samples_lost} samples lost all genres after filtering and will be removed"
+            )
             keep_mask = genres_list_filtered.apply(len) > 0
             genres_list_filtered = genres_list_filtered[keep_mask]
             data = data[keep_mask]
             logger.info(f"Removed {samples_lost} samples with no genres")
-        
+
         # Step 3: Fit MultiLabelBinarizer on filtered training data
         logger.debug("Fitting MultiLabelBinarizer on filtered genre lists")
         mlb = MultiLabelBinarizer()
@@ -168,7 +175,7 @@ def _generate_descriptions(
 
     if vectorizer is None:
         logger.debug("Creating and fitting new TfidfVectorizer with default parameters")
-        vectorizer, _ = build_preprocessor()
+        vectorizer, _, _ = build_preprocessor()
         X_desc = vectorizer.fit_transform(texts)
         logger.info(
             f"TfidfVectorizer fitted: {X_desc.shape[1]} features extracted "
@@ -176,7 +183,7 @@ def _generate_descriptions(
         )
     else:
         # Check if vectorizer is already fitted by checking for vocabulary_ attribute
-        if hasattr(vectorizer, 'vocabulary_') and vectorizer.vocabulary_ is not None:
+        if hasattr(vectorizer, "vocabulary_") and vectorizer.vocabulary_ is not None:
             logger.debug("Using pre-fitted TfidfVectorizer for transformation")
             X_desc = vectorizer.transform(texts)
             logger.info(
@@ -195,14 +202,18 @@ def _generate_descriptions(
 
 
 # ----- PUBLIC API -----
-def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer]:
+def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer, SelectKBest]:
     """
-    Build and return the preprocessing components (TfidfVectorizer and MultiLabelBinarizer).
+    Build and return the preprocessing components.
 
     Returns:
-        Tuple of (TfidfVectorizer, MultiLabelBinarizer) ready for fitting
+        Tuple of (TfidfVectorizer, MultiLabelBinarizer, SelectKBest) ready for fitting.
+        - TfidfVectorizer: Converts text to TF-IDF features
+        - MultiLabelBinarizer: Converts genre lists to binary multi-label format
+        - SelectKBest: Feature selector using chi2 test (k=4500 features)
     """
-    logger.debug("Building preprocessing components: TfidfVectorizer and MultiLabelBinarizer")
+    logger.debug("Building preprocessing components: TfidfVectorizer, MultiLabelBinarizer, and SelectKBest")
+    
     vectorizer = TfidfVectorizer(
         max_features=10000,
         stop_words="english",
@@ -212,32 +223,41 @@ def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer]:
         min_df=3,
         use_idf=True,
     )
-    mlb = MultiLabelBinarizer()
     logger.debug(
         "TfidfVectorizer configured: max_features=10000, ngram_range=(1,2), "
         "sublinear_tf=True, max_df=0.7, min_df=3"
     )
-    return vectorizer, mlb
+    
+    mlb = MultiLabelBinarizer()
+    
+    kbest = SelectKBest(score_func=chi2, k=4500)
+    logger.debug("SelectKBest configured: chi2 test, k=4500 features")
+    
+    return vectorizer, mlb, kbest
 
 
 def load_preprocessors(
     vectorizer_path: Optional[Path] = None,
     mlb_path: Optional[Path] = None,
-) -> Tuple[TfidfVectorizer, MultiLabelBinarizer]:
+    kbest_path: Optional[Path] = None,
+) -> Tuple[TfidfVectorizer, MultiLabelBinarizer, SelectKBest]:
     """
     Load fitted preprocessors from saved model files.
 
     Args:
         vectorizer_path: Path to saved TfidfVectorizer. Defaults to MODELS_DIR / "tfidf_vectorizer.joblib"
         mlb_path: Path to saved MultiLabelBinarizer. Defaults to MODELS_DIR / "genre_binarizer.joblib"
+        kbest_path: Path to saved SelectKBest feature selector. Defaults to MODELS_DIR / "feature_selector.joblib"
 
     Returns:
-        Tuple of (fitted_vectorizer, fitted_mlb)
+        Tuple of (fitted_vectorizer, fitted_mlb, fitted_kbest)
     """
     if vectorizer_path is None:
         vectorizer_path = MODELS_DIR / "tfidf_vectorizer.joblib"
     if mlb_path is None:
         mlb_path = MODELS_DIR / "genre_binarizer.joblib"
+    if kbest_path is None:
+        kbest_path = MODELS_DIR / "feature_selector.joblib"
 
     logger.info(f"Loading TfidfVectorizer from {vectorizer_path}...")
     vectorizer = load_model("tfidf_vectorizer")
@@ -249,16 +269,22 @@ def load_preprocessors(
     mlb = load_model("genre_binarizer")
     logger.debug(f"MultiLabelBinarizer loaded: {len(mlb.classes_)} genre classes")
 
+    logger.info(f"Loading Feature Selector from {kbest_path}...")
+    kbest = load_model("feature_selector")
+    logger.debug(f"Feature Selector loaded: {kbest.k} features selected")
+
     logger.success(
         f"Preprocessors loaded successfully: TfidfVectorizer ({vectorizer.max_features} features), "
-        f"MultiLabelBinarizer ({len(mlb.classes_)} labels)"
+        f"MultiLabelBinarizer ({len(mlb.classes_)} labels), "
+        f"SelectKBest ({kbest.k} features selected)"
     )
-    return vectorizer, mlb
+    return vectorizer, mlb, kbest
 
 
 def save_preprocessors(
     vectorizer: TfidfVectorizer,
     mlb: MultiLabelBinarizer,
+    kbest: SelectKBest,
 ) -> None:
     """
     Save the fitted preprocessors to the models directory.
@@ -272,6 +298,8 @@ def save_preprocessors(
     logger.debug(f"TfidfVectorizer saved: {vectorizer.max_features} features")
     save_model(mlb, "genre_binarizer")
     logger.debug(f"MultiLabelBinarizer saved: {len(mlb.classes_)} genre classes")
+    save_model(kbest, "feature_selector")
+    logger.debug(f"Feature Selector saved: {kbest.k} features selected")
     logger.success("Fitted preprocessors saved successfully to models directory")
 
 
@@ -301,12 +329,20 @@ def main(
     # Check if outputs already exist
     vectorizer_path = MODELS_DIR / "tfidf_vectorizer.joblib"
     mlb_path = MODELS_DIR / "genre_binarizer.joblib"
+    kbest_path = MODELS_DIR / "feature_selector.joblib"
 
-    outputs_exist = output_path.exists() and vectorizer_path.exists() and mlb_path.exists()
+    outputs_exist = (
+        output_path.exists()
+        and vectorizer_path.exists()
+        and mlb_path.exists()
+        and kbest_path.exists()
+    )
 
     if outputs_exist and not force:
         logger.info(f"Processed data already exists at {output_path}")
-        logger.info(f"Preprocessors already exist at {vectorizer_path.name} and {mlb_path.name}")
+        logger.info(
+            f"Preprocessors already exist: {vectorizer_path.name}, {mlb_path.name}, {kbest_path.name}"
+        )
         logger.info("Skipping preprocessing. Use --force to reprocess.")
         return
 
@@ -319,13 +355,13 @@ def main(
     logger.success(f"Loaded {len(data)} samples from interim data")
 
     logger.info("=" * 70)
-    logger.info("Step 1/4: Generating TF-IDF features from descriptions")
+    logger.info("Step 1/5: Generating TF-IDF features from descriptions")
     logger.info("=" * 70)
     X, vect = _generate_descriptions(data)
     logger.success(f"TF-IDF features generated: {X.shape[0]} samples × {X.shape[1]} features")
 
     logger.info("=" * 70)
-    logger.info("Step 2/4: Generating multi-label genre targets")
+    logger.info("Step 2/5: Generating multi-label genre targets")
     logger.info("=" * 70)
     y, mlb, filtered_index = _generate_targets(data)
     # Filter X to match filtered data
@@ -338,7 +374,19 @@ def main(
     logger.success(f"Genre targets generated: {y.shape[0]} samples × {y.shape[1]} labels")
 
     logger.info("=" * 70)
-    logger.info("Step 3/4: Converting sparse matrices to DataFrames")
+    logger.info("Step 3/5: Applying feature selection with SelectKBest")
+    logger.info("=" * 70)
+    logger.info("Fitting SelectKBest feature selector (chi2 test, k=4500)...")
+    kbest = SelectKBest(score_func=chi2, k=4500)
+    X_selected = kbest.fit_transform(X, y)
+    logger.success(
+        f"Feature selection complete: {X_selected.shape[1]} features selected "
+        f"(from {X.shape[1]} original features)"
+    )
+    X = X_selected  # Update X to use selected features
+
+    logger.info("=" * 70)
+    logger.info("Step 4/5: Converting sparse matrices to DataFrames")
     logger.info("=" * 70)
     logger.info(f"Converting sparse TF-IDF matrix to dense DataFrame (shape: {X.shape})...")
     logger.warning("This may take a while for large matrices...")
@@ -379,7 +427,7 @@ def main(
     )
 
     logger.info("=" * 70)
-    logger.info("Step 4/4: Saving processed data and preprocessors")
+    logger.info("Step 5/5: Saving processed data and preprocessors")
     logger.info("=" * 70)
     logger.info(f"Saving processed data to {output_path}...")
     logger.warning("This may take a while for large datasets...")
@@ -388,7 +436,7 @@ def main(
         pbar.update(1)
     logger.success(f"Processed data saved successfully to {output_path}")
 
-    save_preprocessors(vect, mlb)
+    save_preprocessors(vect, mlb, kbest)
     logger.info("=" * 70)
     logger.success("Preprocessing pipeline completed successfully!")
     logger.info("=" * 70)
