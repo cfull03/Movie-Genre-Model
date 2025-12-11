@@ -105,6 +105,16 @@ endif
 plots:
 	$(PYTHON_INTERPRETER) descriptions/plots.py
 
+## Start Flask API server
+.PHONY: api
+api:
+	$(PYTHON_INTERPRETER) app/run.py
+
+## Start Flask API server with gunicorn (production)
+.PHONY: api-prod
+api-prod:
+	gunicorn -w 4 -b 0.0.0.0:5000 "app.app:create_app()"
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
