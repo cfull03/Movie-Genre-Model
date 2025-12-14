@@ -105,15 +105,47 @@ endif
 plots:
 	$(PYTHON_INTERPRETER) descriptions/plots.py
 
-## Start Flask API server
+
+## Predict genres from movie descriptions
+## Usage examples:
+##   make predict DESCRIPTION="A thrilling action movie"
+##   make predict INPUT_FILE=data/test_movies.csv
+##   make predict INPUT_FILE=data/test_movies.csv OUTPUT_FILE=predictions.csv MODEL_PATH=linearsvc.joblib THRESHOLD=0.5
+.PHONY: predict
+predict: train
+ifdef DESCRIPTION
+	$(PYTHON_INTERPRETER) descriptions/modeling/predict.py --description "$(DESCRIPTION)" \
+		$(if $(MODEL_PATH),--model-path $(MODEL_PATH)) \
+		$(if $(THRESHOLD),--threshold $(THRESHOLD))
+else ifdef INPUT_FILE
+	$(PYTHON_INTERPRETER) descriptions/modeling/predict.py --input-file $(INPUT_FILE) \
+		$(if $(MODEL_PATH),--model-path $(MODEL_PATH)) \
+		$(if $(OUTPUT_FILE),--output-file $(OUTPUT_FILE)) \
+		$(if $(DESCRIPTION_COLUMN),--description-column $(DESCRIPTION_COLUMN)) \
+		$(if $(THRESHOLD),--threshold $(THRESHOLD))
+else
+	@echo "Error: Please provide either DESCRIPTION or INPUT_FILE"
+	@echo "Examples:"
+	@echo "  make predict DESCRIPTION=\"A thrilling action movie\""
+	@echo "  make predict INPUT_FILE=data/test_movies.csv"
+	@echo "  make predict INPUT_FILE=data/test_movies.csv OUTPUT_FILE=predictions.csv"
+	@exit 1
+endif
+
+## Start FastAPI server (development)
 .PHONY: api
 api:
 	$(PYTHON_INTERPRETER) app/run.py
 
-## Start Flask API server with gunicorn (production)
+## Start FastAPI server with uvicorn (production)
 .PHONY: api-prod
 api-prod:
-	gunicorn -w 4 -b 0.0.0.0:5000 "app.app:create_app()"
+	uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+## Start Flask API server (legacy)
+.PHONY: api-flask
+api-flask:
+	$(PYTHON_INTERPRETER) app/run.py
 
 #################################################################################
 # Self Documenting Commands                                                     #
