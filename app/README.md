@@ -1,101 +1,138 @@
-# Movie Genre Classification API
+# Movie Genre Prediction API
 
-Flask REST API for movie genre classification.
+FastAPI application for predicting movie genres from text descriptions.
+
+## Features
+
+- **RESTful API** with automatic OpenAPI documentation
+- **Single prediction** endpoint for individual descriptions
+- **Batch prediction** endpoint for multiple descriptions
+- **Health check** endpoint for monitoring
+- **Type validation** using Pydantic schemas
+- **Async support** for better performance
 
 ## Quick Start
 
-### Development Mode
+### Development Server
 
 ```bash
-# Start the API server
 make api
-
-# Or directly
+# or
 python app/run.py
 ```
 
-The API will be available at `http://localhost:5000`
+The API will be available at:
+- **API**: http://localhost:8000
+- **Interactive Docs**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
-### Production Mode
+### Production Server
 
 ```bash
-# Using gunicorn
 make api-prod
-
-# Or directly
-gunicorn -w 4 -b 0.0.0.0:5000 "app.app:create_app()"
+# or
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ## API Endpoints
 
-### Health Check
-```bash
-GET /health
-```
+### `GET /`
+Root endpoint with API information.
 
-### Model Information
-```bash
-GET /model/info
-```
+### `GET /health`
+Health check endpoint. Returns API status and model loading status.
 
-### Single Prediction
-```bash
-POST /predict
-Content-Type: application/json
-
+**Response:**
+```json
 {
-    "description": "A thrilling action movie about a spy who saves the world",
-    "threshold": 0.55
+  "status": "healthy",
+  "version": "1.0.0",
+  "model_loaded": true
 }
 ```
 
-### Batch Prediction
-```bash
-POST /predict/batch
-Content-Type: application/json
+### `POST /predict`
+Predict genres for a single movie description.
 
+**Request:**
+```json
 {
-    "descriptions": [
-        "A thrilling action movie about a spy",
-        "A romantic comedy about two people"
-    ],
-    "threshold": 0.55
+  "description": "A thrilling action movie about a secret agent",
+  "threshold": 0.55,
+  "model_path": null
 }
 ```
 
-### Metrics
-```bash
-GET /metrics
+**Response:**
+```json
+{
+  "description": "A thrilling action movie about a secret agent",
+  "prediction": {
+    "genres": ["Action", "Thriller"],
+    "genre_count": 2
+  },
+  "threshold": 0.55
+}
 ```
 
-## Configuration
+### `POST /predict/batch`
+Predict genres for multiple movie descriptions.
 
-Set environment variables or create a `.env` file:
-
-```bash
-API_HOST=0.0.0.0
-API_PORT=5000
-API_DEBUG=False
-MODEL_PATH=  # Optional: path to model file (auto-detects if not set)
-DEFAULT_THRESHOLD=0.55
-LOG_LEVEL=INFO
-CORS_ORIGINS=*
+**Request:**
+```json
+{
+  "descriptions": [
+    "A thrilling action movie",
+    "A romantic comedy about two strangers"
+  ],
+  "threshold": 0.55,
+  "model_path": null
+}
 ```
 
-## Example Usage
+**Response:**
+```json
+{
+  "predictions": [
+    {
+      "description": "A thrilling action movie",
+      "prediction": {
+        "genres": ["Action", "Thriller"],
+        "genre_count": 2
+      },
+      "threshold": 0.55
+    },
+    {
+      "description": "A romantic comedy about two strangers",
+      "prediction": {
+        "genres": ["Romance", "Comedy"],
+        "genre_count": 2
+      },
+      "threshold": 0.55
+    }
+  ],
+  "total_predictions": 2,
+  "threshold": 0.55
+}
+```
+
+## Testing the API
 
 ### Using curl
 
 ```bash
+# Health check
+curl http://localhost:8000/health
+
 # Single prediction
-curl -X POST http://localhost:5000/predict \
+curl -X POST "http://localhost:8000/predict" \
   -H "Content-Type: application/json" \
   -d '{"description": "A thrilling action movie"}'
 
 # Batch prediction
-curl -X POST http://localhost:5000/predict/batch \
+curl -X POST "http://localhost:8000/predict/batch" \
   -H "Content-Type: application/json" \
-  -d '{"descriptions": ["Action movie", "Romantic comedy"]}'
+  -d '{"descriptions": ["A thrilling action movie", "A romantic comedy"]}'
 ```
 
 ### Using Python
@@ -105,25 +142,49 @@ import requests
 
 # Single prediction
 response = requests.post(
-    "http://localhost:5000/predict",
-    json={"description": "A thrilling action movie", "threshold": 0.55}
+    "http://localhost:8000/predict",
+    json={"description": "A thrilling action movie"}
 )
 print(response.json())
 
 # Batch prediction
 response = requests.post(
-    "http://localhost:5000/predict/batch",
+    "http://localhost:8000/predict/batch",
     json={
-        "descriptions": ["Action movie", "Romantic comedy"],
-        "threshold": 0.55
+        "descriptions": [
+            "A thrilling action movie",
+            "A romantic comedy"
+        ]
     }
 )
 print(response.json())
 ```
 
-## Testing
+## Configuration
 
-```bash
-# Run API tests (to be implemented)
-pytest tests/test_api.py
+Configuration is managed through `app/config.py` and can be overridden with environment variables:
+
+- `HOST`: Server host (default: `0.0.0.0`)
+- `PORT`: Server port (default: `8000`)
+- `DEBUG`: Debug mode (default: `False`)
+- `DEFAULT_THRESHOLD`: Default prediction threshold (default: `0.55`)
+
+## Project Structure
+
 ```
+app/
+├── __init__.py          # Package initialization
+├── main.py              # FastAPI application and routes
+├── config.py            # Configuration settings
+├── schemas.py           # Pydantic request/response models
+├── services.py          # Business logic and prediction service
+├── run.py               # Run script for development
+└── README.md            # This file
+```
+
+## Dependencies
+
+- `fastapi`: Web framework
+- `uvicorn`: ASGI server
+- `pydantic`: Data validation
+- `pydantic-settings`: Settings management

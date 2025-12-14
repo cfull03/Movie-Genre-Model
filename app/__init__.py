@@ -1,5 +1,3 @@
-"""Flask API for movie genre classification."""
+"""FastAPI application for movie genre prediction."""
 
-from app.app import create_app
-
-__all__ = ["create_app"]
+__version__ = "1.0.0"

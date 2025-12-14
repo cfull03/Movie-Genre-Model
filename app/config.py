@@ -1,54 +1,43 @@
-"""Configuration for Flask API."""
+"""Configuration settings for the FastAPI application."""
 
-import os
 from pathlib import Path
-
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Config:
-    """Base configuration."""
-
-    # API Configuration
-    API_HOST = os.getenv("API_HOST", "0.0.0.0")
-    API_PORT = int(os.getenv("API_PORT", "5000"))
-    API_DEBUG = os.getenv("API_DEBUG", "False").lower() == "true"
-
-    # Model Configuration
-    MODEL_PATH = os.getenv("MODEL_PATH", None)  # None = auto-detect
-    DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.55"))
-
+class Settings(BaseSettings):
+    """Application settings."""
+    
+    # API Settings
+    API_TITLE: str = "Movie Genre Prediction API"
+    API_VERSION: str = "1.0.0"
+    API_DESCRIPTION: str = "API for predicting movie genres from text descriptions"
+    
+    # Server Settings
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    DEBUG: bool = False
+    
+    # Model Settings
+    DEFAULT_MODEL_PATH: str = "linearsvc.joblib"
+    DEFAULT_THRESHOLD: float = 0.55
+    
     # Paths
-    PROJ_ROOT = Path(__file__).resolve().parents[1]
-    MODELS_DIR = PROJ_ROOT / "models"
-
-    # Logging
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-    # CORS
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
-
-
-class DevelopmentConfig(Config):
-    """Development configuration."""
-
-    API_DEBUG = True
-    LOG_LEVEL = "DEBUG"
-
-
-class ProductionConfig(Config):
-    """Production configuration."""
-
-    API_DEBUG = False
-    LOG_LEVEL = "INFO"
+    MODELS_DIR: Path = Path("models")
+    PROJECT_ROOT: Path = Path(__file__).parent.parent
+    
+    # Legacy Flask environment variables (ignored but allowed)
+    FLASK_ENV: str | None = None
+    API_HOST: str | None = None
+    API_PORT: int | None = None
+    API_DEBUG: bool | None = None
+    LOG_LEVEL: str | None = None
+    CORS_ORIGINS: str | None = None
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",  # Ignore extra environment variables
+    )
 
 
-# Configuration mapping
-config = {
-    "development": DevelopmentConfig,
-    "production": ProductionConfig,
-    "default": DevelopmentConfig,
-}
+settings = Settings()
