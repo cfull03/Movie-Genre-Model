@@ -217,7 +217,7 @@ def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer, SelectKB
     vectorizer = TfidfVectorizer(
         max_features=10000,
         stop_words="english",
-        ngram_range=(1, 2),
+        ngram_range=(1, 3),
         sublinear_tf=True,
         max_df=0.7,
         min_df=3,

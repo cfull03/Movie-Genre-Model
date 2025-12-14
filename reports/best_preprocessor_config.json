@@ -1,0 +1,24 @@
+{
+  "preprocessing": {
+    "max_features": 15000,
+    "ngram_range": [
+      1,
+      2
+    ],
+    "max_df": 0.6,
+    "min_df": 2,
+    "k_features": 6000
+  },
+  "metrics": {
+    "f1": 0.6129948853949612,
+    "precision": 0.55071477195371,
+    "recall": 0.691157624946604,
+    "hamming_loss": 0.1615147442485572,
+    "jaccard": 0.44195574979513796
+  },
+  "feature_info": {
+    "n_features": 6000,
+    "n_samples_train": 7253,
+    "n_samples_test": 1807
+  }
+}
