@@ -16,9 +16,15 @@ class PredictionRequest(BaseModel):
     )
     threshold: Optional[float] = Field(
         default=0.55,
-        description="Probability threshold for predictions (0.0-1.0)",
+        description="Probability threshold for predictions (0.0-1.0). Only genres above this threshold will be included.",
         ge=0.0,
         le=1.0
+    )
+    top_k: Optional[int] = Field(
+        default=3,
+        description="Maximum number of top genres to select (default: 3). The top k genres by probability will be selected, but only those above the threshold will be returned.",
+        ge=1,
+        le=20
     )
     model_path: Optional[str] = Field(
         default=None,
@@ -38,9 +44,15 @@ class BatchPredictionRequest(BaseModel):
     )
     threshold: Optional[float] = Field(
         default=0.55,
-        description="Probability threshold for predictions (0.0-1.0)",
+        description="Probability threshold for predictions (0.0-1.0). Only genres above this threshold will be included.",
         ge=0.0,
         le=1.0
+    )
+    top_k: Optional[int] = Field(
+        default=3,
+        description="Maximum number of top genres to select (default: 3). The top k genres by probability will be selected, but only those above the threshold will be returned.",
+        ge=1,
+        le=20
     )
     model_path: Optional[str] = Field(
         default=None,
@@ -78,6 +90,10 @@ class PredictionResponse(BaseModel):
         ...,
         description="Threshold used for prediction"
     )
+    top_k: int = Field(
+        ...,
+        description="Top-k value used for prediction"
+    )
 
 
 class BatchPredictionResponse(BaseModel):
@@ -94,6 +110,10 @@ class BatchPredictionResponse(BaseModel):
     threshold: float = Field(
         ...,
         description="Threshold used for predictions"
+    )
+    top_k: int = Field(
+        ...,
+        description="Top-k value used for predictions"
     )
 
 
