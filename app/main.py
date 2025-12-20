@@ -109,6 +109,7 @@ async def predict(request: PredictionRequest):
         predicted_genres = prediction_service.predict(
             descriptions=[request.description],
             threshold=request.threshold,
+            top_k=request.top_k,
             model_path=request.model_path,
         )
         
@@ -120,7 +121,8 @@ async def predict(request: PredictionRequest):
                 genres=list(genres),
                 genre_count=len(genres)
             ),
-            threshold=request.threshold
+            threshold=request.threshold,
+            top_k=request.top_k
         )
     
     except FileNotFoundError as e:
@@ -152,6 +154,7 @@ async def predict_batch(request: BatchPredictionRequest):
         predicted_genres = prediction_service.predict(
             descriptions=request.descriptions,
             threshold=request.threshold,
+            top_k=request.top_k,
             model_path=request.model_path,
         )
         
@@ -165,14 +168,16 @@ async def predict_batch(request: BatchPredictionRequest):
                         genres=list(genres),
                         genre_count=len(genres)
                     ),
-                    threshold=request.threshold
+                    threshold=request.threshold,
+                    top_k=request.top_k
                 )
             )
         
         return BatchPredictionResponse(
             predictions=predictions,
             total_predictions=len(predictions),
-            threshold=request.threshold
+            threshold=request.threshold,
+            top_k=request.top_k
         )
     
     except FileNotFoundError as e:
