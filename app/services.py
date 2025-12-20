@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
 from loguru import logger
 
 from descriptions.config import MODELS_DIR
@@ -19,6 +20,7 @@ class PredictionService:
         self.model_path = None
         self.vectorizer = None
         self.mlb = None
+        self.normalizer = None
         self.feature_selector = None
         self._is_loaded = False
     
@@ -41,7 +43,7 @@ class PredictionService:
                 model_files = [
                     f
                     for f in model_files
-                    if f.name not in {"tfidf_vectorizer.joblib", "genre_binarizer.joblib", "feature_selector.joblib"}
+                    if f.name not in {"tfidf_vectorizer.joblib", "genre_binarizer.joblib", "normalizer.joblib", "feature_selector.joblib"}
                 ]
                 if not model_files:
                     raise FileNotFoundError(f"No model found in {MODELS_DIR}. Please train a model first.")
@@ -62,7 +64,7 @@ class PredictionService:
             
             # Load preprocessors
             logger.info("Loading preprocessors...")
-            self.vectorizer, self.mlb, self.feature_selector = load_preprocessors()
+            self.vectorizer, self.mlb, self.normalizer, self.feature_selector = load_preprocessors()
             logger.success("✓ Preprocessors loaded successfully")
             
             self._is_loaded = True
@@ -76,6 +78,7 @@ class PredictionService:
         self,
         descriptions: List[str],
         threshold: float = 0.55,
+        top_k: int = 3,
         model_path: Optional[str] = None,
     ) -> List[List[str]]:
         """
@@ -83,7 +86,11 @@ class PredictionService:
         
         Args:
             descriptions: List of movie descriptions
-            threshold: Probability threshold for predictions
+            threshold: Probability threshold for predictions. Only genres above
+                      this threshold will be included.
+            top_k: Maximum number of top genres to select (default: 3).
+                   The top k genres by probability will be selected, but only
+                   those above the threshold will be returned.
             model_path: Optional model path (will reload if different)
         
         Returns:
@@ -101,6 +108,9 @@ class PredictionService:
         # Transform descriptions to TF-IDF features
         X = self.vectorizer.transform(descriptions)
         
+        # Apply L2 normalization
+        X = self.normalizer.transform(X)
+        
         # Apply feature selection
         X = self.feature_selector.transform(X)
         
@@ -113,8 +123,17 @@ class PredictionService:
         # Convert scores to probabilities using sigmoid function
         y_proba = expit(y_scores)
         
-        # Apply threshold to get binary predictions
-        y_pred_binary = (y_proba >= threshold).astype(int)
+        # Select top-k genres per sample, but only include those above threshold
+        y_pred_binary = np.zeros_like(y_proba, dtype=int)
+        
+        for i in range(y_proba.shape[0]):
+            # Get top-k indices for this sample (sorted by probability descending)
+            top_k_indices = np.argsort(y_proba[i])[-top_k:][::-1]
+            
+            # Only include genres that are above threshold
+            for idx in top_k_indices:
+                if y_proba[i, idx] >= threshold:
+                    y_pred_binary[i, idx] = 1
         
         # Decode predictions back to genre labels
         predicted_genres = self.mlb.inverse_transform(y_pred_binary)
