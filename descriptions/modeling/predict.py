@@ -44,7 +44,13 @@ def predict_genres(
         model_files = [
             f
             for f in model_files
-            if f.name not in {"tfidf_vectorizer.joblib", "genre_binarizer.joblib", "normalizer.joblib", "feature_selector.joblib"}
+            if f.name
+            not in {
+                "tfidf_vectorizer.joblib",
+                "genre_binarizer.joblib",
+                "normalizer.joblib",
+                "feature_selector.joblib",
+            }
         ]
         if not model_files:
             raise FileNotFoundError(f"No model found in {MODELS_DIR}. Please train a model first.")
@@ -63,7 +69,9 @@ def predict_genres(
     logger.success(f"✓ Model loaded successfully: {model_path.name}")
 
     # Load preprocessors
-    logger.info("Loading preprocessors (TfidfVectorizer, MultiLabelBinarizer, Normalizer, and Feature Selector)...")
+    logger.info(
+        "Loading preprocessors (TfidfVectorizer, MultiLabelBinarizer, Normalizer, and Feature Selector)..."
+    )
     vectorizer, mlb, normalizer, feature_selector = load_preprocessors()
     logger.success("✓ Preprocessors loaded successfully")
 
@@ -71,12 +79,12 @@ def predict_genres(
     logger.info(f"Transforming {len(descriptions)} descriptions to TF-IDF features...")
     X = vectorizer.transform(descriptions)
     logger.debug(f"TF-IDF features generated: shape {X.shape}")
-    
+
     # Apply L2 normalization (same as training)
     logger.info("Applying L2 normalization...")
     X = normalizer.transform(X)
     logger.debug(f"Features normalized: shape {X.shape}")
-    
+
     # Apply feature selection (same as training)
     logger.info("Applying feature selection...")
     X = feature_selector.transform(X)
@@ -88,7 +96,7 @@ def predict_genres(
     logger.info("Generating prediction scores...")
     y_scores = model.decision_function(X)
     logger.debug(f"Decision scores generated: shape {y_scores.shape}")
-    
+
     # Convert scores to probabilities using sigmoid function
     # sigmoid(x) = 1 / (1 + exp(-x))
     logger.info("Converting scores to probabilities...")
@@ -98,16 +106,16 @@ def predict_genres(
     # Select top-k genres per sample, but only include those above threshold
     logger.info(f"Selecting top {top_k} genres with probability >= {threshold}...")
     y_pred_binary = np.zeros_like(y_proba, dtype=int)
-    
+
     for i in range(y_proba.shape[0]):
         # Get top-k indices for this sample (sorted by probability descending)
         top_k_indices = np.argsort(y_proba[i])[-top_k:][::-1]
-        
+
         # Only include genres that are above threshold
         for idx in top_k_indices:
             if y_proba[i, idx] >= threshold:
                 y_pred_binary[i, idx] = 1
-    
+
     logger.debug(f"Binary predictions generated: shape {y_pred_binary.shape}")
     logger.debug(f"Average genres per sample: {y_pred_binary.sum(axis=1).mean():.2f}")
 
@@ -241,7 +249,9 @@ def main(
         logger.info("=" * 70)
         logger.info("Generating predictions")
         logger.info("=" * 70)
-        predicted_genres = predict_genres(descriptions, model_path=model_path, threshold=threshold, top_k=top_k)
+        predicted_genres = predict_genres(
+            descriptions, model_path=model_path, threshold=threshold, top_k=top_k
+        )
     except FileNotFoundError as e:
         logger.error(str(e))
         raise typer.Exit(1)
