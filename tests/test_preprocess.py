@@ -23,28 +23,33 @@ class TestBuildPreprocessor:
     
     def test_build_preprocessor_returns_correct_types(self):
         """Test that build_preprocessor returns correct types."""
-        vectorizer, mlb = build_preprocessor()
+        from sklearn.preprocessing import Normalizer
+        from sklearn.feature_selection import SelectKBest
+        
+        vectorizer, mlb, normalizer, kbest = build_preprocessor()
         assert isinstance(vectorizer, TfidfVectorizer)
         assert isinstance(mlb, MultiLabelBinarizer)
+        assert isinstance(normalizer, Normalizer)
+        assert isinstance(kbest, SelectKBest)
     
     def test_tfidf_max_features_setting(self):
         """Test that TF-IDF has correct max_features."""
-        vectorizer, _ = build_preprocessor()
-        assert vectorizer.max_features == 20000
+        vectorizer, _, _, _ = build_preprocessor()
+        assert vectorizer.max_features == 10000
     
     def test_tfidf_sublinear_tf_enabled(self):
         """Test that sublinear_tf is enabled."""
-        vectorizer, _ = build_preprocessor()
+        vectorizer, _, _, _ = build_preprocessor()
         assert vectorizer.sublinear_tf == True
     
     def test_tfidf_ngram_range(self):
         """Test that ngram_range is set correctly."""
-        vectorizer, _ = build_preprocessor()
-        assert vectorizer.ngram_range == (1, 2)
+        vectorizer, _, _, _ = build_preprocessor()
+        assert vectorizer.ngram_range == (1, 3)
     
     def test_tfidf_stop_words(self):
         """Test that stop_words are set correctly."""
-        vectorizer, _ = build_preprocessor()
+        vectorizer, _, _, _ = build_preprocessor()
         assert vectorizer.stop_words == 'english'
 
 
@@ -111,7 +116,7 @@ class TestGenerateTargets:
     
     def test_generate_targets_creates_binary_matrix(self, sample_movie_data):
         """Test that targets are created as binary matrix."""
-        y, mlb = _generate_targets(sample_movie_data)
+        y, mlb, _ = _generate_targets(sample_movie_data)
         assert isinstance(y, np.ndarray)
         assert y.ndim == 2
         assert y.dtype in [np.int64, np.int32, np.int8]
@@ -119,13 +124,13 @@ class TestGenerateTargets:
     
     def test_generate_targets_with_fitted_mlb(self, sample_movie_data, sample_mlb):
         """Test that targets can be generated with pre-fitted MLB."""
-        y, mlb = _generate_targets(sample_movie_data, mlb=sample_mlb)
+        y, mlb, _ = _generate_targets(sample_movie_data, mlb=sample_mlb)
         assert y.shape[1] == len(sample_mlb.classes_)
         assert mlb is sample_mlb
     
     def test_generate_targets_shape_matches_data(self, sample_movie_data):
         """Test that target shape matches data shape."""
-        y, mlb = _generate_targets(sample_movie_data)
+        y, mlb, _ = _generate_targets(sample_movie_data)
         assert y.shape[0] == len(sample_movie_data)
         assert y.shape[1] == len(mlb.classes_)
 
@@ -136,7 +141,11 @@ class TestGenerateDescriptions:
     def test_generate_descriptions_creates_sparse_matrix(self, sample_movie_data):
         """Test that descriptions are converted to sparse matrix."""
         from scipy.sparse import csr_matrix
-        X, vectorizer = _generate_descriptions(sample_movie_data)
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        
+        # Use a vectorizer with lower min_df for small test data
+        test_vectorizer = TfidfVectorizer(max_features=100, min_df=1, stop_words='english')
+        X, vectorizer = _generate_descriptions(sample_movie_data, vectorizer=test_vectorizer)
         assert isinstance(X, csr_matrix)
         assert X.shape[0] == len(sample_movie_data)
     
@@ -150,18 +159,28 @@ class TestGenerateDescriptions:
     
     def test_generate_descriptions_handles_empty_descriptions(self):
         """Test that empty descriptions are handled."""
+        # Use a vectorizer with lower min_df for small test data
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        
         data = pd.DataFrame({
             'description': ['A movie', '', 'Another movie']
         })
-        X, vectorizer = _generate_descriptions(data)
+        # Create a vectorizer with min_df=1 for small test data
+        test_vectorizer = TfidfVectorizer(max_features=100, min_df=1, stop_words='english')
+        X, vectorizer = _generate_descriptions(data, vectorizer=test_vectorizer)
         assert X.shape[0] == 3
     
     def test_generate_descriptions_handles_missing_values(self):
         """Test that missing descriptions are handled."""
+        # Use a vectorizer with lower min_df for small test data
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        
         data = pd.DataFrame({
             'description': ['A movie', None, 'Another movie']
         })
-        X, vectorizer = _generate_descriptions(data)
+        # Create a vectorizer with min_df=1 for small test data
+        test_vectorizer = TfidfVectorizer(max_features=100, min_df=1, stop_words='english')
+        X, vectorizer = _generate_descriptions(data, vectorizer=test_vectorizer)
         assert X.shape[0] == 3
 
 
@@ -170,6 +189,9 @@ class TestSaveLoadPreprocessors:
     
     def test_save_preprocessors_creates_files(self, sample_vectorizer, sample_mlb, tmp_path, monkeypatch):
         """Test that save_preprocessors creates model files."""
+        from sklearn.preprocessing import Normalizer
+        from sklearn.feature_selection import SelectKBest
+        
         # Temporarily change MODELS_DIR in both modules
         import descriptions.modeling.preprocess as preprocess_module
         import descriptions.modeling.model as model_module
@@ -184,10 +206,16 @@ class TestSaveLoadPreprocessors:
         model_module.MODELS_DIR = test_models_dir
         
         try:
-            save_preprocessors(sample_vectorizer, sample_mlb)
+            # Create normalizer and feature selector for testing
+            normalizer = Normalizer(norm='l2')
+            kbest = SelectKBest(k=100)
+            
+            save_preprocessors(sample_vectorizer, sample_mlb, normalizer, kbest)
             
             assert (test_models_dir / 'tfidf_vectorizer.joblib').exists()
             assert (test_models_dir / 'genre_binarizer.joblib').exists()
+            assert (test_models_dir / 'normalizer.joblib').exists()
+            assert (test_models_dir / 'feature_selector.joblib').exists()
         finally:
             # Restore original MODELS_DIR
             preprocess_module.MODELS_DIR = original_preprocess_models_dir
@@ -195,6 +223,9 @@ class TestSaveLoadPreprocessors:
     
     def test_load_preprocessors_returns_correct_types(self, sample_vectorizer, sample_mlb, tmp_path, monkeypatch):
         """Test that load_preprocessors returns correct types."""
+        from sklearn.preprocessing import Normalizer
+        from sklearn.feature_selection import SelectKBest
+        
         # Temporarily change MODELS_DIR in both modules
         import descriptions.modeling.preprocess as preprocess_module
         import descriptions.modeling.model as model_module
@@ -209,15 +240,18 @@ class TestSaveLoadPreprocessors:
         model_module.MODELS_DIR = test_models_dir
         
         try:
+            # Create normalizer and feature selector for testing
+            normalizer = Normalizer(norm='l2')
+            kbest = SelectKBest(k=100)
+            
             # Save then load
-            save_preprocessors(sample_vectorizer, sample_mlb)
-            loaded_vectorizer, loaded_mlb = load_preprocessors(
-                vectorizer_path=test_models_dir / 'tfidf_vectorizer.joblib',
-                mlb_path=test_models_dir / 'genre_binarizer.joblib'
-            )
+            save_preprocessors(sample_vectorizer, sample_mlb, normalizer, kbest)
+            loaded_vectorizer, loaded_mlb, loaded_normalizer, loaded_kbest = load_preprocessors()
             
             assert isinstance(loaded_vectorizer, TfidfVectorizer)
             assert isinstance(loaded_mlb, MultiLabelBinarizer)
+            assert isinstance(loaded_normalizer, Normalizer)
+            assert isinstance(loaded_kbest, SelectKBest)
             assert loaded_vectorizer.max_features == sample_vectorizer.max_features
             assert len(loaded_mlb.classes_) == len(sample_mlb.classes_)
         finally:

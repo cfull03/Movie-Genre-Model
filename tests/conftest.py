@@ -11,7 +11,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.multiclass import OneVsRestClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
 
 from descriptions.config import MODELS_DIR
 
@@ -117,10 +117,10 @@ def sample_mlb(sample_genres_list):
 @pytest.fixture
 def sample_model():
     """Sample trained model for testing."""
-    base_estimator = LogisticRegression(
+    base_estimator = LinearSVC(
         C=1.0,
         penalty='l2',
-        solver='lbfgs',
+        loss='squared_hinge',
         max_iter=100,
         random_state=42
     )

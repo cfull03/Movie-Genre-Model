@@ -88,6 +88,7 @@ class TestPreprocessingEdgeCases:
     def test_preprocess_all_missing_descriptions(self):
         """Test that all missing descriptions are handled."""
         from descriptions.modeling.preprocess import _generate_descriptions
+        from sklearn.feature_extraction.text import TfidfVectorizer
         
         data = pd.DataFrame({
             'description': [None, None, None]
@@ -98,7 +99,9 @@ class TestPreprocessingEdgeCases:
         data = pd.DataFrame({
             'description': [None, None, 'some text']
         })
-        X, vectorizer = _generate_descriptions(data)
+        # Use a vectorizer with lower min_df for small test data
+        test_vectorizer = TfidfVectorizer(max_features=100, min_df=1, stop_words='english')
+        X, vectorizer = _generate_descriptions(data, vectorizer=test_vectorizer)
         assert X.shape[0] == 3
 
 

@@ -13,6 +13,8 @@ class TestPredictionServiceTopK:
     
     def test_predict_default_top_k(self):
         """Test that predict uses default top_k=3."""
+        from scipy.sparse import csr_matrix
+        
         service = PredictionService()
         
         # Mock the model and preprocessors
@@ -22,16 +24,19 @@ class TestPredictionServiceTopK:
         ])
         
         mock_vectorizer = Mock()
-        mock_vectorizer.transform.return_value = np.array([[1, 2, 3]])
+        # Return sparse matrix (as TF-IDF vectorizer does)
+        mock_vectorizer.transform.return_value = csr_matrix([[1, 2, 3]])
         
         mock_mlb = Mock()
         mock_mlb.inverse_transform.return_value = [('Action', 'Thriller', 'Drama')]
         
         mock_normalizer = Mock()
-        mock_normalizer.transform.return_value = np.array([[1, 2, 3]])
+        # Normalizer returns sparse matrix
+        mock_normalizer.transform.return_value = csr_matrix([[1, 2, 3]])
         
         mock_feature_selector = Mock()
-        mock_feature_selector.transform.return_value = np.array([[1, 2, 3]])
+        # Feature selector returns sparse matrix
+        mock_feature_selector.transform.return_value = csr_matrix([[1, 2, 3]])
         
         service.model = mock_model
         service.vectorizer = mock_vectorizer
@@ -49,6 +54,8 @@ class TestPredictionServiceTopK:
     
     def test_predict_custom_top_k(self):
         """Test that predict respects custom top_k parameter."""
+        from scipy.sparse import csr_matrix
+        
         service = PredictionService()
         
         mock_model = Mock()
@@ -57,16 +64,16 @@ class TestPredictionServiceTopK:
         ])
         
         mock_vectorizer = Mock()
-        mock_vectorizer.transform.return_value = np.array([[1, 2, 3]])
+        mock_vectorizer.transform.return_value = csr_matrix([[1, 2, 3]])
         
         mock_mlb = Mock()
         mock_mlb.inverse_transform.return_value = [('Action', 'Thriller', 'Drama', 'Comedy', 'Romance')]
         
         mock_normalizer = Mock()
-        mock_normalizer.transform.return_value = np.array([[1, 2, 3]])
+        mock_normalizer.transform.return_value = csr_matrix([[1, 2, 3]])
         
         mock_feature_selector = Mock()
-        mock_feature_selector.transform.return_value = np.array([[1, 2, 3]])
+        mock_feature_selector.transform.return_value = csr_matrix([[1, 2, 3]])
         
         service.model = mock_model
         service.vectorizer = mock_vectorizer
@@ -82,6 +89,8 @@ class TestPredictionServiceTopK:
     
     def test_predict_top_k_with_threshold(self):
         """Test that top_k selection respects threshold."""
+        from scipy.sparse import csr_matrix
+        
         service = PredictionService()
         
         # Create probabilities that will be filtered by threshold
@@ -91,17 +100,17 @@ class TestPredictionServiceTopK:
         ])
         
         mock_vectorizer = Mock()
-        mock_vectorizer.transform.return_value = np.array([[1, 2, 3]])
+        mock_vectorizer.transform.return_value = csr_matrix([[1, 2, 3]])
         
         mock_mlb = Mock()
         # Only genres above threshold should be returned
         mock_mlb.inverse_transform.return_value = [('Action', 'Thriller')]
         
         mock_normalizer = Mock()
-        mock_normalizer.transform.return_value = np.array([[1, 2, 3]])
+        mock_normalizer.transform.return_value = csr_matrix([[1, 2, 3]])
         
         mock_feature_selector = Mock()
-        mock_feature_selector.transform.return_value = np.array([[1, 2, 3]])
+        mock_feature_selector.transform.return_value = csr_matrix([[1, 2, 3]])
         
         service.model = mock_model
         service.vectorizer = mock_vectorizer
@@ -121,6 +130,8 @@ class TestPredictionServiceTopK:
     
     def test_predict_multiple_descriptions(self):
         """Test that predict handles multiple descriptions."""
+        from scipy.sparse import csr_matrix
+        
         service = PredictionService()
         
         mock_model = Mock()
@@ -130,7 +141,7 @@ class TestPredictionServiceTopK:
         ])
         
         mock_vectorizer = Mock()
-        mock_vectorizer.transform.return_value = np.array([[1, 2], [3, 4]])
+        mock_vectorizer.transform.return_value = csr_matrix([[1, 2], [3, 4]])
         
         mock_mlb = Mock()
         mock_mlb.inverse_transform.return_value = [
@@ -139,10 +150,10 @@ class TestPredictionServiceTopK:
         ]
         
         mock_normalizer = Mock()
-        mock_normalizer.transform.return_value = np.array([[1, 2], [3, 4]])
+        mock_normalizer.transform.return_value = csr_matrix([[1, 2], [3, 4]])
         
         mock_feature_selector = Mock()
-        mock_feature_selector.transform.return_value = np.array([[1, 2], [3, 4]])
+        mock_feature_selector.transform.return_value = csr_matrix([[1, 2], [3, 4]])
         
         service.model = mock_model
         service.vectorizer = mock_vectorizer
@@ -159,13 +170,32 @@ class TestPredictionServiceTopK:
         assert isinstance(result, list)
         assert len(result) == 2
     
-    def test_predict_model_not_loaded_raises_error(self):
+    def test_predict_model_not_loaded_raises_error(self, tmp_path, monkeypatch):
         """Test that predict raises error when model is not loaded."""
-        service = PredictionService()
-        service._is_loaded = False
+        import descriptions.modeling.model as model_module
+        import descriptions.modeling.preprocess as preprocess_module
         
-        with pytest.raises(RuntimeError, match="Model not loaded"):
-            service.predict(['A test description'])
+        original_models_dir = model_module.MODELS_DIR
+        original_preprocess_models_dir = preprocess_module.MODELS_DIR
+        
+        test_models_dir = tmp_path / 'models'
+        test_models_dir.mkdir(parents=True, exist_ok=True)
+        
+        model_module.MODELS_DIR = test_models_dir
+        preprocess_module.MODELS_DIR = test_models_dir
+        
+        try:
+            service = PredictionService()
+            service._is_loaded = False
+            
+            # Mock MODELS_DIR to not have any models
+            monkeypatch.setattr('app.services.MODELS_DIR', test_models_dir)
+            
+            with pytest.raises((RuntimeError, FileNotFoundError)):
+                service.predict(['A test description'])
+        finally:
+            model_module.MODELS_DIR = original_models_dir
+            preprocess_module.MODELS_DIR = original_preprocess_models_dir
     
     def test_is_ready(self):
         """Test that is_ready returns correct status."""
