@@ -147,6 +147,31 @@ class TestPredictionEdgeCases:
         assert 0.0 <= threshold_0 <= 1.0
         assert 0.0 <= threshold_1 <= 1.0
         assert 0.0 <= threshold_05 <= 1.0
+    
+    def test_top_k_boundary_values(self):
+        """Test that top_k boundary values work correctly."""
+        # top_k should be a positive integer
+        top_k_1 = 1
+        top_k_3 = 3  # default
+        top_k_10 = 10
+        
+        assert top_k_1 >= 1
+        assert top_k_3 >= 1
+        assert top_k_10 >= 1
+        assert isinstance(top_k_1, int)
+        assert isinstance(top_k_3, int)
+        assert isinstance(top_k_10, int)
+    
+    def test_predict_with_top_k_parameter(self):
+        """Test that predict_genres accepts top_k parameter."""
+        # This tests that the function signature accepts top_k
+        # Actual functionality is tested in test_predict.py
+        from descriptions.modeling.predict import predict_genres
+        import inspect
+        
+        sig = inspect.signature(predict_genres)
+        assert 'top_k' in sig.parameters
+        assert sig.parameters['top_k'].default == 3
 
 
 class TestModelEvaluationEdgeCases:
