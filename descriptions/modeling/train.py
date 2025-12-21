@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import Normalizer
 from tqdm import tqdm
 import typer
 
@@ -56,7 +57,7 @@ def split_data(
         try:
             from descriptions.modeling.preprocess import load_preprocessors
 
-            _, mlb, _ = load_preprocessors()
+            _, mlb, _, _ = load_preprocessors()
             logger.info("Loaded MultiLabelBinarizer from saved model")
         except FileNotFoundError:
             raise FileNotFoundError(
@@ -105,9 +106,10 @@ def prepare_features_and_labels(
     data: pd.DataFrame,
     vectorizer=None,
     mlb=None,
+    normalizer=None,
     feature_selector=None,
     k_features: int = 4500,
-) -> Tuple[pd.DataFrame, np.ndarray, object, object, object]:
+) -> Tuple[pd.DataFrame, np.ndarray, object, object, object, object]:
     """
     Generate TF-IDF features and multi-label targets from raw data.
 
@@ -118,11 +120,12 @@ def prepare_features_and_labels(
         data: DataFrame with 'description' and 'genre' columns
         vectorizer: Optional pre-fitted TfidfVectorizer. If None, creates and fits a new one.
         mlb: Optional pre-fitted MultiLabelBinarizer. If None, creates and fits a new one.
+        normalizer: Optional pre-fitted Normalizer. If None, creates and fits a new one.
         feature_selector: Optional pre-fitted SelectKBest. If None, creates and fits a new one.
         k_features: Number of features to select (default: 4500)
 
     Returns:
-        Tuple of (features_df, labels_array, vectorizer, mlb, feature_selector)
+        Tuple of (features_df, labels_array, vectorizer, mlb, normalizer, feature_selector)
     """
     logger.info("Generating TF-IDF features from descriptions...")
     X_sparse, vectorizer = _generate_descriptions(data, vectorizer=vectorizer)
@@ -137,6 +140,17 @@ def prepare_features_and_labels(
         index_map = {idx: i for i, idx in enumerate(data.index)}
         filtered_positions = [index_map[idx] for idx in filtered_index]
         X_sparse = X_sparse[filtered_positions]
+
+    # Apply L2 normalization
+    if normalizer is None:
+        logger.info("Applying L2 normalization to feature vectors...")
+        normalizer = Normalizer(norm="l2")
+        X_sparse = normalizer.fit_transform(X_sparse)
+        logger.success("Normalization complete: features normalized to unit length (L2 norm)")
+    else:
+        logger.info("Using pre-fitted normalizer for transformation")
+        X_sparse = normalizer.transform(X_sparse)
+        logger.debug("Features normalized")
 
     # Apply feature selection
     if feature_selector is None:
@@ -165,7 +179,7 @@ def prepare_features_and_labels(
         f"{X_df.shape[1]} features, {y.shape[1]} labels"
     )
 
-    return X_df, y, vectorizer, mlb, feature_selector
+    return X_df, y, vectorizer, mlb, normalizer, feature_selector
 
 
 def train_model(
@@ -245,7 +259,11 @@ def train_test_split_data(
     return X_train, X_test, y_train, y_test
 
 
-def save_parameters(model_params_dict: dict, model_name: str) -> None:
+def save_parameters(
+    model_params_dict: dict,
+    model_name: str,
+    params_path: Path = MODELS_DIR / "model_parameters.json",
+) -> None:
     """
     Save model parameters to a JSON file.
     """
@@ -274,11 +292,15 @@ def main(
     penalty: str = typer.Option(
         "l2", "--penalty", help="Penalty type for LinearSVC ('l1' or 'l2')"
     ),
-    loss: str = typer.Option("squared_hinge", "--loss", help="Loss function for LinearSVC ('hinge' or 'squared_hinge')"),
+    loss: str = typer.Option(
+        "squared_hinge", "--loss", help="Loss function for LinearSVC ('hinge' or 'squared_hinge')"
+    ),
     max_iter: int = typer.Option(1000, "--max-iter", help="Max iterations for LinearSVC"),
     tol: float = typer.Option(1e-3, "--tol", help="Tolerance for LinearSVC"),
     class_weight: str = typer.Option("balanced", "--class-weight", help="Class weight strategy"),
-    dual: bool = typer.Option(False, "--dual/--no-dual", help="Solve dual or primal optimization problem"),
+    dual: bool = typer.Option(
+        False, "--dual/--no-dual", help="Solve dual or primal optimization problem"
+    ),
     k_features: int = typer.Option(
         4500, "--k-features", help="Number of features to select with SelectKBest"
     ),
@@ -359,6 +381,7 @@ def main(
             logger.info("Logging model hyperparameters to MLflow...")
             for key, value in model_params_dict.items():
                 mlflow.log_param(f"model_{key}", value)
+                save_parameters(model_params_dict, model_name)
                 logger.debug(f"  model_{key} = {value}")
             mlflow.set_tag("model_type", "LinearSVC-OneVsRest")
             mlflow.set_tag("task", "multi-label-classification")
@@ -405,8 +428,15 @@ def main(
             logger.info("Fitting preprocessors on training data")
             logger.info("=" * 70)
             logger.info("Generating TF-IDF features and labels from training data...")
-            X_train, y_train, vectorizer, mlb, feature_selector = prepare_features_and_labels(
-                data_train, vectorizer=None, mlb=None, feature_selector=None, k_features=k_features
+            X_train, y_train, vectorizer, mlb, normalizer, feature_selector = (
+                prepare_features_and_labels(
+                    data_train,
+                    vectorizer=None,
+                    mlb=None,
+                    normalizer=None,
+                    feature_selector=None,
+                    k_features=k_features,
+                )
             )
             logger.success(
                 f"✓ Preprocessors fitted on training data: {X_train.shape[1]} features, {y_train.shape[1]} labels"
@@ -416,8 +446,12 @@ def main(
             logger.info("=" * 70)
             logger.info("Transforming test data using fitted preprocessors")
             logger.info("=" * 70)
-            X_test, y_test, _, _, _ = prepare_features_and_labels(
-                data_test, vectorizer=vectorizer, mlb=mlb, feature_selector=feature_selector
+            X_test, y_test, _, _, _, _ = prepare_features_and_labels(
+                data_test,
+                vectorizer=vectorizer,
+                mlb=mlb,
+                normalizer=normalizer,
+                feature_selector=feature_selector,
             )
             logger.success(
                 f"✓ Test data transformed: {X_test.shape[0]} samples, {X_test.shape[1]} features, {y_test.shape[1]} labels"
@@ -425,7 +459,7 @@ def main(
 
             # Save preprocessors for later use (e.g., prediction)
             logger.info("Saving fitted preprocessors...")
-            save_preprocessors(vectorizer, mlb, feature_selector)
+            save_preprocessors(vectorizer, mlb, normalizer, feature_selector)
             logger.success("✓ Preprocessors saved (including feature selector)")
 
             # Log preprocessing parameters to MLflow

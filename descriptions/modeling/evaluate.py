@@ -23,6 +23,7 @@ app = typer.Typer()
 PREPROCESSOR_FILES = {
     "tfidf_vectorizer.joblib",
     "genre_binarizer.joblib",
+    "normalizer.joblib",
     "feature_selector.joblib",
 }
 
@@ -130,11 +131,11 @@ def evaluate_model(model: Any, X: np.ndarray, y: np.ndarray, threshold: float = 
     # and convert scores to probabilities using sigmoid function
     y_scores = model.decision_function(X)
     logger.debug(f"Decision scores generated: shape {y_scores.shape}")
-    
+
     # Convert scores to probabilities using sigmoid function
     y_proba = expit(y_scores)
     logger.debug(f"Probabilities generated: shape {y_proba.shape}")
-    
+
     # Apply threshold to get binary predictions
     y_pred = (y_proba >= threshold).astype(int)
     logger.debug(f"Binary predictions generated: shape {y_pred.shape}")
@@ -293,21 +294,29 @@ def main(
             data = load_interim(data_path)
             logger.success(f"✓ Interim data loaded successfully: {len(data)} samples")
             logger.info("Loading saved preprocessors...")
-            vectorizer, mlb, feature_selector = load_preprocessors()
-            logger.success("✓ Preprocessors loaded successfully (including feature selector)")
-            
+            vectorizer, mlb, normalizer, feature_selector = load_preprocessors()
+            logger.success(
+                "✓ Preprocessors loaded successfully (including normalizer and feature selector)"
+            )
+
             # Prepare features and labels on ALL data first (matching notebook approach)
             # This filters the data consistently before splitting
             logger.info("Preparing features and labels on all data (filtering invalid samples)...")
-            X_all, y_all, _, _, _ = prepare_features_and_labels(
-                data, vectorizer=vectorizer, mlb=mlb, feature_selector=feature_selector
+            X_all, y_all, _, _, _, _ = prepare_features_and_labels(
+                data,
+                vectorizer=vectorizer,
+                mlb=mlb,
+                normalizer=normalizer,
+                feature_selector=feature_selector,
             )
             logger.success(
                 f"✓ All data transformed: {X_all.shape[0]} samples, {X_all.shape[1]} features, {y_all.shape[1]} labels"
             )
-            
+
             # Now split the filtered data into train/test sets (same split as training)
-            logger.info("Splitting filtered data into train and test sets (matching training split)...")
+            logger.info(
+                "Splitting filtered data into train and test sets (matching training split)..."
+            )
             X_train, X, y_train, y = train_test_split(
                 X_all,
                 y_all,
@@ -316,9 +325,11 @@ def main(
                 shuffle=True,
             )
             logger.success(
-                f"✓ Test set: {len(X)} samples ({len(X)/len(X_all)*100:.1f}% of filtered data)"
+                f"✓ Test set: {len(X)} samples ({len(X) / len(X_all) * 100:.1f}% of filtered data)"
             )
-            logger.info(f"✓ Train set: {len(X_train)} samples ({len(X_train)/len(X_all)*100:.1f}% of filtered data)")
+            logger.info(
+                f"✓ Train set: {len(X_train)} samples ({len(X_train) / len(X_all) * 100:.1f}% of filtered data)"
+            )
 
         logger.success(
             f"✓ Data prepared: {X.shape[0]} samples, {X.shape[1]} features, {y.shape[1]} labels"

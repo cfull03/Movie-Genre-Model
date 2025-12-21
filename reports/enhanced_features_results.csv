@@ -1,0 +1,2 @@
+method,f1_micro,f1_macro,precision_micro,recall_micro,hamming_loss,jaccard_micro
+Enhanced Features (Word+Char N-grams + SelectKBest),0.5461444308445532,0.5409294259979769,0.6396215596330275,0.47650576676633916,0.14657285160882283,0.37565246674524333

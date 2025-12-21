@@ -7,7 +7,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_selection import SelectKBest, chi2
-from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.preprocessing import MultiLabelBinarizer, Normalizer
 from tqdm import tqdm
 import typer
 
@@ -26,6 +26,8 @@ __all__ = [
     "build_preprocessor",
     "load_preprocessors",
     "save_preprocessors",
+    "_generate_descriptions",
+    "_generate_targets",
 ]
 
 
@@ -175,7 +177,7 @@ def _generate_descriptions(
 
     if vectorizer is None:
         logger.debug("Creating and fitting new TfidfVectorizer with default parameters")
-        vectorizer, _, _ = build_preprocessor()
+        vectorizer, _, _, _ = build_preprocessor()
         X_desc = vectorizer.fit_transform(texts)
         logger.info(
             f"TfidfVectorizer fitted: {X_desc.shape[1]} features extracted "
@@ -202,18 +204,21 @@ def _generate_descriptions(
 
 
 # ----- PUBLIC API -----
-def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer, SelectKBest]:
+def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer, Normalizer, SelectKBest]:
     """
     Build and return the preprocessing components.
 
     Returns:
-        Tuple of (TfidfVectorizer, MultiLabelBinarizer, SelectKBest) ready for fitting.
+        Tuple of (TfidfVectorizer, MultiLabelBinarizer, Normalizer, SelectKBest) ready for fitting.
         - TfidfVectorizer: Converts text to TF-IDF features
         - MultiLabelBinarizer: Converts genre lists to binary multi-label format
+        - Normalizer: L2 normalization for feature vectors (helps chi2 feature selection)
         - SelectKBest: Feature selector using chi2 test (k=4500 features)
     """
-    logger.debug("Building preprocessing components: TfidfVectorizer, MultiLabelBinarizer, and SelectKBest")
-    
+    logger.debug(
+        "Building preprocessing components: TfidfVectorizer, MultiLabelBinarizer, Normalizer, and SelectKBest"
+    )
+
     vectorizer = TfidfVectorizer(
         max_features=10000,
         stop_words="english",
@@ -224,38 +229,45 @@ def build_preprocessor() -> Tuple[TfidfVectorizer, MultiLabelBinarizer, SelectKB
         use_idf=True,
     )
     logger.debug(
-        "TfidfVectorizer configured: max_features=10000, ngram_range=(1,2), "
+        "TfidfVectorizer configured: max_features=10000, ngram_range=(1,3), "
         "sublinear_tf=True, max_df=0.7, min_df=3"
     )
-    
+
     mlb = MultiLabelBinarizer()
-    
+
+    normalizer = Normalizer(norm="l2")
+    logger.debug("Normalizer configured: L2 norm (normalizes each sample to unit length)")
+
     kbest = SelectKBest(score_func=chi2, k=4500)
     logger.debug("SelectKBest configured: chi2 test, k=4500 features")
-    
-    return vectorizer, mlb, kbest
+
+    return vectorizer, mlb, normalizer, kbest
 
 
 def load_preprocessors(
     vectorizer_path: Optional[Path] = None,
     mlb_path: Optional[Path] = None,
+    normalizer_path: Optional[Path] = None,
     kbest_path: Optional[Path] = None,
-) -> Tuple[TfidfVectorizer, MultiLabelBinarizer, SelectKBest]:
+) -> Tuple[TfidfVectorizer, MultiLabelBinarizer, Normalizer, SelectKBest]:
     """
     Load fitted preprocessors from saved model files.
 
     Args:
         vectorizer_path: Path to saved TfidfVectorizer. Defaults to MODELS_DIR / "tfidf_vectorizer.joblib"
         mlb_path: Path to saved MultiLabelBinarizer. Defaults to MODELS_DIR / "genre_binarizer.joblib"
+        normalizer_path: Path to saved Normalizer. Defaults to MODELS_DIR / "normalizer.joblib"
         kbest_path: Path to saved SelectKBest feature selector. Defaults to MODELS_DIR / "feature_selector.joblib"
 
     Returns:
-        Tuple of (fitted_vectorizer, fitted_mlb, fitted_kbest)
+        Tuple of (fitted_vectorizer, fitted_mlb, fitted_normalizer, fitted_kbest)
     """
     if vectorizer_path is None:
         vectorizer_path = MODELS_DIR / "tfidf_vectorizer.joblib"
     if mlb_path is None:
         mlb_path = MODELS_DIR / "genre_binarizer.joblib"
+    if normalizer_path is None:
+        normalizer_path = MODELS_DIR / "normalizer.joblib"
     if kbest_path is None:
         kbest_path = MODELS_DIR / "feature_selector.joblib"
 
@@ -269,6 +281,15 @@ def load_preprocessors(
     mlb = load_model("genre_binarizer")
     logger.debug(f"MultiLabelBinarizer loaded: {len(mlb.classes_)} genre classes")
 
+    logger.info(f"Loading Normalizer from {normalizer_path}...")
+    try:
+        normalizer = load_model("normalizer")
+        logger.debug(f"Normalizer loaded: norm={normalizer.norm}")
+    except FileNotFoundError:
+        # For backward compatibility, create a default normalizer if not found
+        logger.warning("Normalizer not found, creating default L2 normalizer")
+        normalizer = Normalizer(norm="l2")
+
     logger.info(f"Loading Feature Selector from {kbest_path}...")
     kbest = load_model("feature_selector")
     logger.debug(f"Feature Selector loaded: {kbest.k} features selected")
@@ -276,14 +297,16 @@ def load_preprocessors(
     logger.success(
         f"Preprocessors loaded successfully: TfidfVectorizer ({vectorizer.max_features} features), "
         f"MultiLabelBinarizer ({len(mlb.classes_)} labels), "
+        f"Normalizer (L2 norm), "
         f"SelectKBest ({kbest.k} features selected)"
     )
-    return vectorizer, mlb, kbest
+    return vectorizer, mlb, normalizer, kbest
 
 
 def save_preprocessors(
     vectorizer: TfidfVectorizer,
     mlb: MultiLabelBinarizer,
+    normalizer: Normalizer,
     kbest: SelectKBest,
 ) -> None:
     """
@@ -292,12 +315,16 @@ def save_preprocessors(
     Args:
         vectorizer: Fitted TfidfVectorizer to save
         mlb: Fitted MultiLabelBinarizer to save
+        normalizer: Fitted Normalizer to save
+        kbest: Fitted SelectKBest feature selector to save
     """
     logger.info("Saving fitted preprocessors to models directory...")
     save_model(vectorizer, "tfidf_vectorizer")
     logger.debug(f"TfidfVectorizer saved: {vectorizer.max_features} features")
     save_model(mlb, "genre_binarizer")
     logger.debug(f"MultiLabelBinarizer saved: {len(mlb.classes_)} genre classes")
+    save_model(normalizer, "normalizer")
+    logger.debug(f"Normalizer saved: norm={normalizer.norm}")
     save_model(kbest, "feature_selector")
     logger.debug(f"Feature Selector saved: {kbest.k} features selected")
     logger.success("Fitted preprocessors saved successfully to models directory")
@@ -329,19 +356,21 @@ def main(
     # Check if outputs already exist
     vectorizer_path = MODELS_DIR / "tfidf_vectorizer.joblib"
     mlb_path = MODELS_DIR / "genre_binarizer.joblib"
+    normalizer_path = MODELS_DIR / "normalizer.joblib"
     kbest_path = MODELS_DIR / "feature_selector.joblib"
 
     outputs_exist = (
         output_path.exists()
         and vectorizer_path.exists()
         and mlb_path.exists()
+        and normalizer_path.exists()
         and kbest_path.exists()
     )
 
     if outputs_exist and not force:
         logger.info(f"Processed data already exists at {output_path}")
         logger.info(
-            f"Preprocessors already exist: {vectorizer_path.name}, {mlb_path.name}, {kbest_path.name}"
+            f"Preprocessors already exist: {vectorizer_path.name}, {mlb_path.name}, {normalizer_path.name}, {kbest_path.name}"
         )
         logger.info("Skipping preprocessing. Use --force to reprocess.")
         return
@@ -374,7 +403,15 @@ def main(
     logger.success(f"Genre targets generated: {y.shape[0]} samples × {y.shape[1]} labels")
 
     logger.info("=" * 70)
-    logger.info("Step 3/5: Applying feature selection with SelectKBest")
+    logger.info("Step 3/5: Applying L2 normalization")
+    logger.info("=" * 70)
+    logger.info("Applying L2 normalization to feature vectors...")
+    normalizer = Normalizer(norm="l2")
+    X = normalizer.fit_transform(X)
+    logger.success("Normalization complete: features normalized to unit length (L2 norm)")
+
+    logger.info("=" * 70)
+    logger.info("Step 4/5: Applying feature selection with SelectKBest")
     logger.info("=" * 70)
     logger.info("Fitting SelectKBest feature selector (chi2 test, k=4500)...")
     kbest = SelectKBest(score_func=chi2, k=4500)
@@ -386,7 +423,7 @@ def main(
     X = X_selected  # Update X to use selected features
 
     logger.info("=" * 70)
-    logger.info("Step 4/5: Converting sparse matrices to DataFrames")
+    logger.info("Step 5/5: Converting sparse matrices to DataFrames")
     logger.info("=" * 70)
     logger.info(f"Converting sparse TF-IDF matrix to dense DataFrame (shape: {X.shape})...")
     logger.warning("This may take a while for large matrices...")
@@ -427,7 +464,7 @@ def main(
     )
 
     logger.info("=" * 70)
-    logger.info("Step 5/5: Saving processed data and preprocessors")
+    logger.info("Step 6/6: Saving processed data and preprocessors")
     logger.info("=" * 70)
     logger.info(f"Saving processed data to {output_path}...")
     logger.warning("This may take a while for large datasets...")
@@ -436,7 +473,7 @@ def main(
         pbar.update(1)
     logger.success(f"Processed data saved successfully to {output_path}")
 
-    save_preprocessors(vect, mlb, kbest)
+    save_preprocessors(vect, mlb, normalizer, kbest)
     logger.info("=" * 70)
     logger.success("Preprocessing pipeline completed successfully!")
     logger.info("=" * 70)
