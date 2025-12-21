@@ -114,8 +114,11 @@ class PredictionService:
         # Apply feature selection
         X = self.feature_selector.transform(X)
         
-        # Convert to dense array for LinearSVC
-        X_dense = X.toarray()
+        # Convert to dense array for LinearSVC (handle both sparse and dense)
+        if hasattr(X, 'toarray'):
+            X_dense = X.toarray()
+        else:
+            X_dense = X
         
         # Get prediction scores
         y_scores = self.model.decision_function(X_dense)
