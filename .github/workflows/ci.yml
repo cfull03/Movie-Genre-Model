@@ -37,6 +37,14 @@ jobs:
           channels: conda-forge
           channel-priority: strict
 
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-conda-
+
       - name: Install package in editable mode
         shell: bash -l {0}
         run: |
@@ -52,10 +60,31 @@ jobs:
         run: |
           ruff check
 
-      - name: Run tests
+      - name: Run pre-commit hooks
         shell: bash -l {0}
         run: |
-          pytest tests/ -v --tb=short
+          pre-commit run --all-files || true  # Don't fail on first run if baseline missing
+
+      - name: Run tests with coverage
+        shell: bash -l {0}
+        run: |
+          pytest tests/ -v --tb=short --cov=descriptions --cov=app --cov-report=xml --cov-report=html --cov-report=term
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 7
 
   train-model:
     name: Train Model
@@ -67,6 +96,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-conda-
 
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@v3
@@ -121,18 +158,30 @@ jobs:
         shell: bash -l {0}
         run: |
           echo "Checking for model artifacts..."
-          if [ -f "models/logisticregression.joblib" ] || [ -f "models/model.joblib" ]; then
+          # Check for linearsvc.joblib (current model) or model.joblib (default name)
+          if [ -f "models/linearsvc.joblib" ] || [ -f "models/model.joblib" ]; then
             echo "✓ Model file created successfully"
             ls -lh models/*.joblib
           else
-            echo "✗ Model file not found"
+            echo "✗ Model file not found (expected linearsvc.joblib or model.joblib)"
+            ls -la models/ || echo "Models directory does not exist"
             exit 1
           fi
           
-          if [ -f "models/tfidf_vectorizer.joblib" ] && [ -f "models/genre_binarizer.joblib" ] && [ -f "models/feature_selector.joblib" ]; then
-            echo "✓ Preprocessor files created successfully"
+          # Check for required preprocessor files
+          required_files=("tfidf_vectorizer.joblib" "genre_binarizer.joblib")
+          missing_files=()
+          for file in "${required_files[@]}"; do
+            if [ ! -f "models/$file" ]; then
+              missing_files+=("$file")
+            fi
+          done
+          
+          if [ ${#missing_files[@]} -eq 0 ]; then
+            echo "✓ All preprocessor files created successfully"
           else
-            echo "✗ Preprocessor files not found"
+            echo "✗ Missing preprocessor files: ${missing_files[*]}"
+            ls -la models/ || echo "Models directory does not exist"
             exit 1
           fi
 

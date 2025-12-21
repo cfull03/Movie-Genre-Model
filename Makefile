@@ -50,6 +50,13 @@ format:
 	ruff check --fix
 	ruff format
 
+## Install pre-commit hooks
+.PHONY: pre-commit-install
+pre-commit-install:
+	pre-commit install
+	@echo ">>> Pre-commit hooks installed successfully"
+	@echo ">>> Run 'pre-commit run --all-files' to test on all files"
+
 
 
 ## Run tests

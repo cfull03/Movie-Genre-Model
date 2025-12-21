@@ -1,0 +1,51 @@
+repos:
+  # Ruff for Python formatting and linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Run Ruff to check for linting errors
+      - id: ruff
+        args: [--fix]
+      # Run Ruff to check formatting
+      - id: ruff-format
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Check YAML files for syntax errors
+      - id: check-yaml
+        args: [--unsafe]  # Allow custom tags
+      # Check JSON files for syntax errors
+      - id: check-json
+      # Check for files that would conflict in case-insensitive filesystems
+      - id: check-case-conflict
+      # Check for files with names that would conflict on Windows
+      - id: check-merge-conflict
+      # Check for debugger imports
+      - id: debug-statements
+      # Check for files with trailing whitespace
+      - id: trailing-whitespace
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+      # Check for large files
+      - id: check-added-large-files
+        args: [--maxkb=1000]  # Warn if files > 1MB
+
+  # Detect secrets and API keys
+  # Note: Create baseline with: detect-secrets scan > .secrets.baseline
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json
+
+  # Check for common security issues
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: [-r, descriptions/, app/]
+        exclude: tests/
+
