@@ -14,24 +14,26 @@ This project implements an end-to-end machine learning pipeline for multi-label 
 
 - **Multi-label Classification**: Predicts multiple genres per movie (e.g., "Action, Adventure, Thriller")
 - **Production-Ready Pipeline**: Complete workflow from raw data to trained model
+- **REST API**: FastAPI-based API with `/predict` and `/predict/batch` endpoints
+- **Top-K Genre Selection**: Selects top k genres by probability, filtered by threshold (default: top 3)
 - **MLflow Integration**: Comprehensive experiment tracking and model versioning
 - **Generalization-Focused**: LinearSVC with strong regularization (C=0.1) prevents overfitting
-- **Solid Performance**: Achieves **60.59% F1-score**, **54.22% precision**, and **68.67% recall**
+- **Strong Performance**: Achieves **69.65% F1-score**, **78.93% precision**, and **62.32% recall**
 - **Comprehensive Logging**: Detailed progress tracking and error handling
 
 ## 📊 Model Performance
 
-The trained LinearSVC model achieves solid performance with strong generalization properties:
+The trained LinearSVC model achieves strong performance with excellent generalization properties:
 
 | Metric | Score | Interpretation |
 |--------|-------|----------------|
-| **F1 Score** | 60.59% | Solid overall precision-recall balance |
-| **Precision** | 54.22% | Moderate accuracy when predicting genres |
-| **Recall** | 68.67% | Good - captures most true genres |
-| **Hamming Loss** | 16.53% | Moderate error rate, acceptable for multi-label classification |
-| **Jaccard Score** | 43.46% | Moderate overlap between predicted and true genres |
+| **F1 Score** | 69.65% | Strong overall precision-recall balance |
+| **Precision** | 78.93% | High accuracy when predicting genres |
+| **Recall** | 62.32% | Good - captures most true genres |
+| **Hamming Loss** | 9.95% | Low error rate, excellent for multi-label classification |
+| **Jaccard Score** | 53.43% | Good overlap between predicted and true genres |
 
-**Model Selection**: LinearSVC was chosen over LogisticRegression specifically to address overfitting concerns. While metrics are lower than a less regularized model, the stronger regularization (C=0.1) ensures better generalization to unseen data, making it more suitable for production deployment.
+**Model Selection**: LinearSVC was chosen over LogisticRegression specifically to address overfitting concerns. The stronger regularization (C=0.1) ensures better generalization to unseen data, making it more suitable for production deployment while maintaining strong performance metrics.
 
 See the [Model Evaluation Report](reports/model_evaluation_report.md) for detailed analysis.
 
@@ -109,18 +111,71 @@ make train    # Processes data, trains model, and evaluates
 
 #### Making Predictions
 
-Predict genres for a single description:
+**Command Line Interface:**
+
+Predict genres for a single description (default: top 3 genres above threshold 0.55):
 ```bash
 python -m descriptions.modeling.predict \
     --description "A thrilling action movie about a spy who saves the world"
+```
+
+Predict with custom top-k and threshold:
+```bash
+python -m descriptions.modeling.predict \
+    --description "A sci-fi action thriller with romance elements" \
+    --top-k 5 \
+    --threshold 0.5
 ```
 
 Predict genres from a CSV file:
 ```bash
 python -m descriptions.modeling.predict \
     --input-file data/test_movies.csv \
-    --output-file predictions.csv
+    --output-file predictions.csv \
+    --top-k 3 \
+    --threshold 0.55
 ```
+
+**REST API:**
+
+Start the API server:
+```bash
+make api
+# or for production
+make api-prod
+```
+
+The API will be available at `http://localhost:8000` with interactive documentation at `/docs`.
+
+Single prediction:
+```bash
+curl -X POST "http://localhost:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "A thrilling action movie about a secret agent saving the world",
+    "threshold": 0.55,
+    "top_k": 3
+  }'
+```
+
+Batch prediction:
+```bash
+curl -X POST "http://localhost:8000/predict/batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "descriptions": [
+      "A thrilling action movie about a secret agent",
+      "A romantic comedy about two strangers who fall in love"
+    ],
+    "threshold": 0.55,
+    "top_k": 3
+  }'
+```
+
+**Top-K Selection**: The model uses a top-k selection strategy where it:
+1. Selects the top k genres by probability (default: k=3)
+2. Only includes genres above the probability threshold (default: 0.55)
+3. Returns up to k genres per prediction, ensuring quality predictions
 
 ## 📁 Project Organization
 
@@ -136,6 +191,12 @@ python -m descriptions.modeling.predict \
 │   ├── interim/      <- Intermediate data (cleaned)
 │   ├── processed/    <- Final canonical datasets
 │   └── raw/          <- Original immutable data dump
+│
+├── app/              <- FastAPI REST API application
+│   ├── main.py      <- API endpoints and routes
+│   ├── services.py  <- Prediction service layer
+│   ├── schemas.py   <- Pydantic request/response models
+│   └── config.py    <- API configuration
 │
 ├── descriptions/      <- Source code package
 │   ├── __init__.py
@@ -205,6 +266,52 @@ python -m descriptions.modeling.train \
 
 **Note**: When tuning C, consider values between 0.05-1.0. Lower values provide stronger regularization and better generalization, while higher values may improve training metrics but risk overfitting.
 
+## 🌐 REST API
+
+The project includes a production-ready FastAPI REST API for making predictions.
+
+### Starting the API Server
+
+**Development mode:**
+```bash
+make api
+```
+
+**Production mode (with multiple workers):**
+```bash
+make api-prod
+```
+
+The API will be available at `http://localhost:8000` with:
+- Interactive API documentation: `http://localhost:8000/docs` (Swagger UI)
+- Alternative documentation: `http://localhost:8000/redoc` (ReDoc)
+- Health check endpoint: `http://localhost:8000/health`
+
+### API Endpoints
+
+**POST `/predict`** - Predict genres for a single description
+- Request body: `{ "description": "...", "threshold": 0.55, "top_k": 3 }`
+- Returns: Predicted genres with confidence
+
+**POST `/predict/batch`** - Predict genres for multiple descriptions
+- Request body: `{ "descriptions": ["...", "..."], "threshold": 0.55, "top_k": 3 }`
+- Returns: List of predictions for each description
+
+**GET `/health`** - Health check and model status
+- Returns: API status and whether model is loaded
+
+### API Features
+
+- **Top-K Selection**: Selects top k genres by probability (default: 3)
+- **Threshold Filtering**: Only includes genres above probability threshold (default: 0.55)
+- **Batch Processing**: Process multiple descriptions in a single request
+- **Automatic Model Loading**: Model loads automatically on API startup
+- **CORS Enabled**: Ready for frontend integration
+- **Request Validation**: Pydantic schemas ensure data validation
+- **Error Handling**: Comprehensive error responses
+
+See the interactive documentation at `/docs` for detailed request/response schemas and examples.
+
 ## 📈 MLflow Integration
 
 The project uses MLflow for experiment tracking. All training runs are automatically logged with:
@@ -271,15 +378,27 @@ python -m descriptions.modeling.train \
 
 **Note**: The training pipeline automatically handles train/test splitting **before** preprocessing to prevent data leakage. TF-IDF and label encoding are fitted only on training data.
 
-### Example 3: Prediction with Custom Threshold
+### Example 3: Prediction with Custom Threshold and Top-K
 
 ```bash
+# Use lower threshold to get more genres
 python -m descriptions.modeling.predict \
     --description "A romantic comedy about two people who fall in love" \
-    --threshold 0.4
+    --threshold 0.4 \
+    --top-k 5
+
+# Use higher threshold for more conservative predictions
+python -m descriptions.modeling.predict \
+    --description "A sci-fi action thriller" \
+    --threshold 0.7 \
+    --top-k 2
 ```
 
-Lower thresholds predict more genres, higher thresholds are more conservative.
+**Understanding Top-K and Threshold**:
+- **Top-K**: Maximum number of genres to select (default: 3). The model selects the top k genres by probability.
+- **Threshold**: Minimum probability required for a genre to be included (default: 0.55). Only genres above this threshold are returned.
+- Lower thresholds predict more genres, higher thresholds are more conservative.
+- The top-k selection ensures you get the most confident predictions up to k genres.
 
 ## 🛠️ Development
 
@@ -302,7 +421,10 @@ The codebase follows a modular structure:
 - `preprocess.py`: Feature engineering (TF-IDF, label encoding) - ⚠️ For exploration/evaluation only
 - `train.py`: Model training logic (handles train/test split before preprocessing to prevent data leakage)
 - `evaluate.py`: Model evaluation and metrics
-- `predict.py`: Inference pipeline
+- `predict.py`: Inference pipeline with top-k selection
+- `app/main.py`: FastAPI REST API endpoints
+- `app/services.py`: Prediction service layer
+- `app/schemas.py`: API request/response models
 
 **Important**: The training pipeline (`train.py`) properly splits data before fitting preprocessors to avoid data leakage. The standalone `preprocess.py` script fits on the entire dataset and should only be used for exploratory analysis.
 
@@ -362,7 +484,8 @@ For questions or issues, please open an issue on the repository.
 
 ---
 
-**Last Updated**: November 2025  
+**Last Updated**: December 2025  
 **Model Version**: 2.0 (LinearSVC)  
-**Performance**: 60.59% F1-score, 16.53% Hamming Loss  
-**Model Selection**: LinearSVC chosen over LogisticRegression to address overfitting concerns
+**Performance**: 69.65% F1-score, 9.95% Hamming Loss, 78.93% Precision  
+**Model Selection**: LinearSVC chosen over LogisticRegression to address overfitting concerns  
+**Latest Features**: Top-k genre selection, REST API with FastAPI
