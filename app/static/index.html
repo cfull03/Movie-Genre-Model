@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Genre Predictor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Movie Genre Predictor</h1>
+            <p class="subtitle">Enter a movie description to predict its genres</p>
+        </header>
+
+        <main>
+            <div class="form-container">
+                <form id="predictionForm">
+                    <div class="form-group">
+                        <label for="description">Movie Description</label>
+                        <textarea 
+                            id="description" 
+                            name="description" 
+                            rows="6" 
+                            placeholder="Enter a movie description here... (e.g., A secret agent must save the world from a terrorist organization)"
+                            required
+                        ></textarea>
+                        <div class="char-count">
+                            <span id="charCount">0</span> characters
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="threshold">Threshold</label>
+                            <input 
+                                type="number" 
+                                id="threshold" 
+                                name="threshold" 
+                                min="0" 
+                                max="1" 
+                                step="0.01" 
+                                value="0.55"
+                            >
+                            <small>Probability threshold (0.0 - 1.0)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="topK">Top K</label>
+                            <input 
+                                type="number" 
+                                id="topK" 
+                                name="topK" 
+                                min="1" 
+                                max="20" 
+                                value="3"
+                            >
+                            <small>Maximum number of genres</small>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="btn-primary">
+                        <span class="btn-text">Predict Genres</span>
+                        <span class="btn-loader" style="display: none;">⏳ Predicting...</span>
+                    </button>
+                </form>
+            </div>
+
+            <div id="resultContainer" class="result-container" style="display: none;">
+                <h2>Prediction Results</h2>
+                <div id="results"></div>
+            </div>
+
+            <div id="errorContainer" class="error-container" style="display: none;">
+                <h3>Error</h3>
+                <p id="errorMessage"></p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by Movie Genre Prediction API</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

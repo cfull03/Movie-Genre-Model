@@ -1,7 +1,10 @@
 """FastAPI application main file."""
 
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from loguru import logger
 
 from app.config import settings
@@ -35,6 +38,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files
+static_dir = Path(__file__).parent / "static"
+static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -58,10 +66,13 @@ async def shutdown_event():
     "/",
     tags=["Root"],
     summary="Root endpoint",
-    description="Returns API information"
+    description="Returns API information or serves UI"
 )
 async def root():
-    """Root endpoint."""
+    """Root endpoint - serves the UI."""
+    html_file = static_dir / "index.html"
+    if html_file.exists():
+        return FileResponse(html_file)
     return {
         "message": "Movie Genre Prediction API",
         "version": settings.API_VERSION,
