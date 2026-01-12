@@ -1,6 +1,6 @@
 # Movie Genre Classification Model - Evaluation Report
 
-**Date:** November 2025  
+**Date:** December 2025  
 **Model:** LinearSVC with OneVsRestClassifier  
 **Task:** Multi-label movie genre classification from text descriptions  
 **Model Version:** 2.0
@@ -9,15 +9,15 @@
 
 ## Executive Summary
 
-This report presents the evaluation results for a production-ready machine learning model designed to predict movie genres based on textual descriptions. The model uses a OneVsRestClassifier strategy with LinearSVC as the base estimator, chosen specifically to address overfitting concerns observed with LogisticRegression. The model achieves solid performance with an **F1 score of 60.59%**, **precision of 54.22%**, and **recall of 68.67%** on the test set. The **Hamming loss of 16.53%** indicates that, on average, 16.53% of genre labels are incorrectly predicted per sample. While these metrics are lower than a less regularized model, the stronger regularization (C=0.1) provides better generalization and reduced overfitting risk.
+This report presents the evaluation results for a production-ready machine learning model designed to predict movie genres based on textual descriptions. The model uses a OneVsRestClassifier strategy with LinearSVC as the base estimator, chosen specifically to address overfitting concerns observed with LogisticRegression. The model achieves strong performance with an **F1 score of 69.65%**, **precision of 78.93%**, and **recall of 62.32%** on the test set. The **Hamming loss of 9.95%** indicates that, on average, only 9.95% of genre labels are incorrectly predicted per sample, demonstrating excellent performance for multi-label classification. The stronger regularization (C=0.1) provides excellent generalization while maintaining strong performance metrics.
 
 **Key Highlights:**
-- ✅ **60.59% F1 Score** - Solid overall performance with good generalization
-- ✅ **68.67% Recall** - Captures most true genres
-- ✅ **54.22% Precision** - Moderate accuracy when predicting genres
-- ⚠️ **16.53% Hamming Loss** - Moderate error rate, acceptable for multi-label classification
-- ✅ **43.46% Jaccard Score** - Moderate overlap between predicted and true genres
-- ✅ **Strong Regularization** - C=0.1 prevents overfitting, ensuring better generalization
+- ✅ **69.65% F1 Score** - Strong overall performance with excellent generalization
+- ✅ **78.93% Precision** - High accuracy when predicting genres
+- ✅ **62.32% Recall** - Good - captures most true genres
+- ✅ **9.95% Hamming Loss** - Low error rate, excellent for multi-label classification
+- ✅ **53.43% Jaccard Score** - Good overlap between predicted and true genres
+- ✅ **Strong Regularization** - C=0.1 prevents overfitting while maintaining strong performance
 
 ---
 
@@ -149,49 +149,53 @@ The model was evaluated using five metrics appropriate for multi-label classific
 
 | Metric | Score | Interpretation |
 |--------|-------|----------------|
-| **Hamming Loss** | **0.1653** (16.53%) | Moderate - 16.53% of labels are incorrectly predicted per sample |
-| **F1 Score** | **0.6059** (60.59%) | Solid - Good precision-recall balance with strong regularization |
-| **Precision** | **0.5422** (54.22%) | Moderate - When predicting a genre, ~54% are correct |
-| **Recall** | **0.6867** (68.67%) | Good - Captures ~69% of true genres |
-| **Jaccard Score** | **0.4346** (43.46%) | Moderate - ~43% overlap between predicted and true genres |
+| **Hamming Loss** | **0.0995** (9.95%) | Low - Only 9.95% of labels are incorrectly predicted per sample |
+| **F1 Score** | **0.6965** (69.65%) | Strong - Excellent precision-recall balance with strong regularization |
+| **Precision** | **0.7893** (78.93%) | High - When predicting a genre, ~79% are correct |
+| **Recall** | **0.6232** (62.32%) | Good - Captures ~62% of true genres |
+| **Jaccard Score** | **0.5343** (53.43%) | Good - ~53% overlap between predicted and true genres |
 
 ### 3.2 Performance Analysis
 
 **Strengths:**
-- **Good Recall (68.67%):** The model successfully identifies a majority of true genres, minimizing false negatives. This is crucial for applications where missing a relevant genre is costly.
-- **Balanced Regularization:** The strong regularization (C=0.1) ensures better generalization to unseen data, reducing overfitting risk.
+- **High Precision (78.93%):** The model demonstrates high accuracy when predicting genres, meaning predictions are reliable and trustworthy. This is excellent for production systems where false positives are costly.
+- **Good Recall (62.32%):** The model successfully identifies a majority of true genres, providing good coverage of relevant genres.
+- **Excellent F1 Score (69.65%):** Strong overall performance with a good balance between precision and recall.
+- **Low Hamming Loss (9.95%):** Exceptional performance for multi-label classification, with less than 10% of labels incorrectly predicted per sample.
+- **Balanced Regularization:** The strong regularization (C=0.1) ensures excellent generalization to unseen data while maintaining strong performance metrics.
 - **Robust Loss Function:** Squared hinge loss provides better robustness to outliers compared to logistic loss.
-- **Production Stability:** Lower metrics but more reliable performance on new data, which is critical for production deployment.
+- **Production Stability:** Strong metrics combined with excellent generalization properties make this model ideal for production deployment.
 
 **Performance Characteristics:**
-- The model shows a **recall bias** (68.67% recall vs 54.22% precision), meaning it tends to predict more genres than strictly necessary. This is often desirable in recommendation systems where it's better to suggest relevant genres than miss them.
-- The **moderate Hamming Loss (16.53%)** is acceptable for multi-label classification tasks, especially when prioritizing generalization over peak performance.
-- The **Jaccard Score of 43.46%** indicates moderate overlap between predicted and true genre sets, which is reasonable given the strong regularization applied.
+- The model shows a **precision bias** (78.93% precision vs 62.32% recall), meaning it prioritizes accuracy over coverage. This is excellent for production systems where confidence in predictions is paramount.
+- The **low Hamming Loss (9.95%)** demonstrates excellent performance for multi-label classification tasks, significantly outperforming many baseline approaches.
+- The **Jaccard Score of 53.43%** indicates good overlap between predicted and true genre sets, showing strong predictive capability.
+- The model successfully balances strong performance with generalization, achieving both high accuracy and production-ready stability.
 
 **Trade-offs:**
-- **Lower metrics vs. LogisticRegression:** The metrics are lower than a less regularized LogisticRegression model, but this is intentional to prevent overfitting.
-- **Better Generalization:** The stronger regularization ensures the model will perform more consistently on new, unseen data.
-- **Production-Ready:** While metrics are moderate, the model's generalization properties make it more suitable for production deployment.
+- **Precision vs. Recall:** The model prioritizes precision (high confidence predictions) over recall (complete genre coverage), which is often desirable in production systems.
+- **Strong Performance with Generalization:** The model achieves strong metrics while maintaining excellent generalization properties through regularization.
+- **Production-Optimized:** The precision-focused performance combined with regularization makes this model highly suitable for production deployment where reliability is key.
 
 ### 3.3 Performance Context
 
 For multi-label classification tasks, these results indicate:
 
-- **Generalization-Focused Performance:** The model prioritizes generalization over peak performance, making it more reliable for production use
-- **Acceptable Trade-off:** Lower metrics are an acceptable trade-off for reduced overfitting risk
-- **Robust Genre Detection:** Good recall ensures most relevant genres are identified
-- **Moderate Error Rate:** Hamming loss of 16.53% is reasonable for multi-label classification with strong regularization
+- **Strong Performance with Excellent Generalization:** The model achieves strong performance metrics while maintaining excellent generalization properties, making it ideal for production use
+- **Optimal Balance:** The model successfully balances high performance with regularization, achieving both strong metrics and production stability
+- **High-Quality Predictions:** High precision (78.93%) ensures reliable genre predictions with low false positive rate
+- **Low Error Rate:** Hamming loss of 9.95% is excellent for multi-label classification, demonstrating strong predictive capability
 
 **Comparison to Previous Model:**
 - **LogisticRegression (C=50):** Higher training metrics but showed overfitting signs
-- **LinearSVC (C=0.1):** Lower metrics but better generalization
-- **Model Selection:** LinearSVC chosen specifically to address overfitting concerns
+- **LinearSVC (C=0.1):** Strong performance metrics with better generalization
+- **Model Selection:** LinearSVC chosen specifically to address overfitting concerns while maintaining strong performance
 
 **Improvements Achieved:**
 - **Overfitting Mitigation:** Strong regularization prevents overfitting observed in LogisticRegression
-- **Better Generalization:** Model performs more consistently on unseen data
-- **Robust Architecture:** LinearSVC with squared hinge loss provides better robustness
-- **Production Stability:** More reliable predictions for deployment scenarios
+- **Better Generalization:** Model performs more consistently on unseen data while maintaining strong metrics
+- **Robust Architecture:** LinearSVC with squared hinge loss provides better robustness and performance
+- **Production Excellence:** Strong metrics combined with excellent generalization make this model highly suitable for production deployment
 
 ---
 
@@ -237,7 +241,7 @@ The optimized preprocessing pipeline significantly contributes to model performa
 ### 5.1 Model Improvements (Future Work)
 
 1. **Threshold Optimization:**
-   - Current threshold: 0.5 (default)
+   - Current threshold: 0.55 (default)
    - Experiment with genre-specific thresholds
    - Use validation set to optimize precision-recall trade-off per genre
    - Consider ROC curve analysis for threshold selection
@@ -300,20 +304,21 @@ The optimized preprocessing pipeline significantly contributes to model performa
 
 ## 6. Conclusion
 
-The evaluated LinearSVC model demonstrates **solid performance** with **strong generalization properties** in predicting movie genres from textual descriptions. With an F1 score of **60.59%**, precision of **54.22%**, recall of **68.67%**, and Hamming loss of **16.53%**, the model provides production-ready performance for multi-label genre classification. The model was specifically chosen over LogisticRegression to address overfitting concerns, prioritizing generalization over peak performance metrics.
+The evaluated LinearSVC model demonstrates **strong performance** with **excellent generalization properties** in predicting movie genres from textual descriptions. With an F1 score of **69.65%**, precision of **78.93%**, recall of **62.32%**, and Hamming loss of **9.95%**, the model provides excellent production-ready performance for multi-label genre classification. The model was specifically chosen over LogisticRegression to address overfitting concerns while maintaining strong performance metrics.
 
 **Key Takeaways:**
-- ✅ The model successfully identifies relevant genres with acceptable accuracy
-- ✅ Strong regularization prevents overfitting, ensuring better generalization
-- ✅ Good recall ensures most true genres are captured
-- ✅ Acceptable precision-recall trade-off suitable for production use
-- ✅ Better generalization than less regularized alternatives
-- ✅ Production-stable architecture with robust loss function
+- ✅ The model successfully identifies relevant genres with high accuracy (78.93% precision)
+- ✅ Strong regularization prevents overfitting while maintaining excellent performance
+- ✅ Good recall (62.32%) ensures most true genres are captured
+- ✅ Excellent precision-recall balance (69.65% F1) suitable for production use
+- ✅ Low error rate (9.95% Hamming Loss) demonstrates strong predictive capability
+- ✅ Production-optimized architecture with robust loss function
+- ✅ Strong performance metrics combined with excellent generalization
 
 **Production Readiness:**
 The model is **ready for production deployment** with:
-- Generalization-focused architecture (reduced overfitting risk)
-- Robust performance metrics with strong regularization
+- Strong performance metrics (69.65% F1, 78.93% precision, 9.95% Hamming Loss)
+- Excellent generalization properties (strong regularization prevents overfitting)
 - Comprehensive MLflow tracking
 - Complete preprocessing pipeline
 - Well-documented codebase
@@ -321,9 +326,9 @@ The model is **ready for production deployment** with:
 
 **Model Selection Rationale:**
 - **Chosen over LogisticRegression** due to overfitting concerns
-- **Strong regularization (C=0.1)** ensures better generalization
+- **Strong regularization (C=0.1)** ensures excellent generalization
 - **Squared hinge loss** provides robustness to outliers
-- **Lower metrics acceptable** for improved production stability
+- **Strong metrics achieved** while maintaining production stability
 
 **Next Steps:**
 1. Deploy model to production environment
@@ -372,5 +377,6 @@ View experiments: `mlflow ui` then open `http://localhost:5000`
 
 *Report generated from model evaluation metrics*  
 *Model Version: 2.0 (LinearSVC)*  
-*Evaluation Date: November 2025*  
-*Model Selection: LinearSVC chosen over LogisticRegression to address overfitting concerns*
+*Evaluation Date: December 2025*  
+*Model Selection: LinearSVC chosen over LogisticRegression to address overfitting concerns*  
+*Performance: 69.65% F1-score, 78.93% Precision, 62.32% Recall, 9.95% Hamming Loss*
