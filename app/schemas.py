@@ -15,8 +15,8 @@ class PredictionRequest(BaseModel):
         example="A thrilling action movie about a secret agent saving the world"
     )
     threshold: Optional[float] = Field(
-        default=0.55,
-        description="Probability threshold for predictions (0.0-1.0). Only genres above this threshold will be included.",
+        default=None,
+        description="Probability threshold for predictions (0.0-1.0). If None, uses per-label thresholds if available, else 0.55. Only genres above their threshold will be included.",
         ge=0.0,
         le=1.0
     )
@@ -43,8 +43,8 @@ class BatchPredictionRequest(BaseModel):
         example=["A thrilling action movie", "A romantic comedy about two strangers"]
     )
     threshold: Optional[float] = Field(
-        default=0.55,
-        description="Probability threshold for predictions (0.0-1.0). Only genres above this threshold will be included.",
+        default=None,
+        description="Probability threshold for predictions (0.0-1.0). If None, uses per-label thresholds if available, else 0.55. Only genres above their threshold will be included.",
         ge=0.0,
         le=1.0
     )
@@ -86,9 +86,9 @@ class PredictionResponse(BaseModel):
         ...,
         description="Genre prediction result"
     )
-    threshold: float = Field(
-        ...,
-        description="Threshold used for prediction"
+    threshold: Optional[float] = Field(
+        default=None,
+        description="Threshold used for prediction. None indicates per-label thresholds were used."
     )
     top_k: int = Field(
         ...,
@@ -107,9 +107,9 @@ class BatchPredictionResponse(BaseModel):
         ...,
         description="Total number of predictions"
     )
-    threshold: float = Field(
-        ...,
-        description="Threshold used for predictions"
+    threshold: Optional[float] = Field(
+        default=None,
+        description="Threshold used for predictions. None indicates per-label thresholds were used."
     )
     top_k: int = Field(
         ...,
