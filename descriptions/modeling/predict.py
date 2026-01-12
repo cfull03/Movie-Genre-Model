@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from loguru import logger
 import numpy as np
@@ -8,6 +8,7 @@ from scipy.special import expit  # Sigmoid function for converting scores to pro
 import typer
 
 from descriptions.config import MODELS_DIR
+from descriptions.modeling.evaluate import load_per_label_thresholds
 from descriptions.modeling.model import load_model
 from descriptions.modeling.preprocess import load_preprocessors
 
@@ -17,8 +18,9 @@ app = typer.Typer()
 def predict_genres(
     descriptions: List[str],
     model_path: Optional[Union[str, Path]] = None,
-    threshold: float = 0.55,
+    threshold: Optional[Union[float, Dict[str, float]]] = None,
     top_k: int = 3,
+    use_global_threshold: bool = False,
 ) -> List[List[str]]:
     """
     Predict genres for a list of movie descriptions.
@@ -26,11 +28,15 @@ def predict_genres(
     Args:
         descriptions: List of movie description strings
         model_path: Path to trained model. If None, uses default model.
-        threshold: Probability threshold for predictions (default: 0.55).
-                   Only genres above this threshold will be included.
+        threshold: Probability threshold for predictions. Can be:
+                   - None: Uses per-label thresholds if available, else 0.55
+                   - float: Global threshold value (overrides per-label thresholds)
+                   - Dict[str, float]: Per-label thresholds (genre name -> threshold)
         top_k: Maximum number of top genres to select (default: 3).
                The top k genres by probability will be selected, but only
-               those above the threshold will be returned.
+               those above their threshold will be returned.
+        use_global_threshold: If True, forces use of global threshold even if
+                             per-label thresholds are available.
 
     Returns:
         List of lists of predicted genres (one list per description)
@@ -103,18 +109,72 @@ def predict_genres(
     y_proba = expit(y_scores)
     logger.debug(f"Probabilities generated: shape {y_proba.shape}")
 
-    # Select top-k genres per sample, but only include those above threshold
-    logger.info(f"Selecting top {top_k} genres with probability >= {threshold}...")
+    # Determine which thresholds to use
+    per_label_thresholds: Optional[Dict[str, float]] = None
+    global_threshold = 0.55
+
+    if use_global_threshold:
+        # Force use of global threshold
+        if threshold is None or isinstance(threshold, dict):
+            global_threshold = 0.55 if threshold is None else 0.55
+            logger.info(f"Using global threshold: {global_threshold}")
+        else:
+            global_threshold = threshold
+            logger.info(f"Using global threshold: {global_threshold}")
+    elif isinstance(threshold, dict):
+        # Explicit per-label thresholds provided
+        per_label_thresholds = threshold
+        logger.info(f"Using provided per-label thresholds for {len(per_label_thresholds)} labels")
+    elif threshold is not None:
+        # Explicit global threshold provided
+        global_threshold = threshold
+        logger.info(f"Using global threshold: {global_threshold}")
+    else:
+        # Try to load per-label thresholds by default
+        per_label_thresholds = load_per_label_thresholds()
+        if per_label_thresholds:
+            logger.info(f"Using per-label thresholds for {len(per_label_thresholds)} labels")
+        else:
+            global_threshold = 0.55
+            logger.info(f"Per-label thresholds not found, using global threshold: {global_threshold}")
+
+    # Apply thresholds and select top-k genres per sample
     y_pred_binary = np.zeros_like(y_proba, dtype=int)
 
-    for i in range(y_proba.shape[0]):
-        # Get top-k indices for this sample (sorted by probability descending)
-        top_k_indices = np.argsort(y_proba[i])[-top_k:][::-1]
+    if per_label_thresholds:
+        # Use per-label thresholds
+        logger.info("Applying per-label thresholds...")
+        for label_idx, label_name in enumerate(mlb.classes_):
+            if label_name in per_label_thresholds:
+                label_threshold = per_label_thresholds[label_name]
+                y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(int)
+            else:
+                logger.debug(
+                    f"Threshold not found for label '{label_name}', using global threshold {global_threshold}"
+                )
+                y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= global_threshold).astype(int)
+        logger.debug("Binary predictions generated using per-label thresholds")
+    else:
+        # Use global threshold
+        logger.info(f"Applying global threshold: {global_threshold}")
+        y_pred_binary = (y_proba >= global_threshold).astype(int)
+        logger.debug(f"Binary predictions generated using global threshold {global_threshold}")
 
-        # Only include genres that are above threshold
-        for idx in top_k_indices:
-            if y_proba[i, idx] >= threshold:
-                y_pred_binary[i, idx] = 1
+    # Apply top-k selection: for each sample, select top-k from genres that passed threshold
+    logger.info(f"Selecting top {top_k} genres from thresholded predictions...")
+    for i in range(y_proba.shape[0]):
+        # Get indices of genres that passed threshold
+        passed_indices = np.where(y_pred_binary[i] == 1)[0]
+        
+        if len(passed_indices) > top_k:
+            # Select top-k by probability from those that passed
+            passed_proba = y_proba[i, passed_indices]
+            top_k_passed_indices = passed_indices[np.argsort(passed_proba)[-top_k:][::-1]]
+            
+            # Reset all predictions for this sample
+            y_pred_binary[i, :] = 0
+            # Set only the top-k
+            y_pred_binary[i, top_k_passed_indices] = 1
 
     logger.debug(f"Binary predictions generated: shape {y_pred_binary.shape}")
     logger.debug(f"Average genres per sample: {y_pred_binary.sum(axis=1).mean():.2f}")
@@ -166,11 +226,16 @@ def main(
         "-c",
         help="Column name in input file containing descriptions (default: 'description')",
     ),
-    threshold: float = typer.Option(
-        0.55,
+    threshold: Optional[float] = typer.Option(
+        None,
         "--threshold",
         "-t",
-        help="Probability threshold for predictions (default: 0.55). Only genres above this threshold will be included.",
+        help="Global probability threshold (default: None, uses per-label thresholds if available, else 0.55). Only genres above threshold will be included.",
+    ),
+    use_global_threshold: bool = typer.Option(
+        False,
+        "--use-global-threshold",
+        help="Force use of global threshold even if per-label thresholds are available.",
     ),
     top_k: int = typer.Option(
         3,
@@ -250,7 +315,11 @@ def main(
         logger.info("Generating predictions")
         logger.info("=" * 70)
         predicted_genres = predict_genres(
-            descriptions, model_path=model_path, threshold=threshold, top_k=top_k
+            descriptions,
+            model_path=model_path,
+            threshold=threshold,
+            top_k=top_k,
+            use_global_threshold=use_global_threshold,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
