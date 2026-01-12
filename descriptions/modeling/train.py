@@ -8,14 +8,26 @@ import mlflow.sklearn
 import numpy as np
 import pandas as pd
 from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.metrics import f1_score, hamming_loss, jaccard_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import Normalizer
+from scipy.special import expit  # Sigmoid function for converting scores to probabilities
 from tqdm import tqdm
 import typer
 
 from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim
 from descriptions.modeling.model import build_model, get_model_name, save_model
+from descriptions.modeling.mlflow_utils import (
+    setup_experiment,
+    log_git_info,
+    log_environment_info,
+    log_preprocessors_as_artifacts,
+    log_data_info,
+    log_training_summary,
+    calculate_file_hash,
+    register_model,
+)
 from descriptions.modeling.preprocess import (
     _generate_descriptions,
     _generate_targets,
@@ -333,12 +345,7 @@ def main(
     logger.info("=" * 70)
     logger.info("Setting up MLflow experiment tracking")
     logger.info("=" * 70)
-    try:
-        mlflow.create_experiment(experiment_name)
-        logger.info(f"✓ Created new MLflow experiment: '{experiment_name}'")
-    except Exception:
-        mlflow.set_experiment(experiment_name)
-        logger.info(f"✓ Using existing MLflow experiment: '{experiment_name}'")
+    setup_experiment(experiment_name, create_if_not_exists=True)
 
     # Generate run name from hyperparameters if not provided
     if run_name is None:
@@ -348,6 +355,11 @@ def main(
     # Start MLflow run - each unique parameter combination creates a new run
     with mlflow.start_run(run_name=run_name):
         try:
+            # Log git and environment info
+            logger.info("Logging git and environment information...")
+            log_git_info()
+            log_environment_info()
+            logger.success("✓ Git and environment info logged")
             # Determine final model path early to check if it exists
             default_model_path = MODELS_DIR / "model.joblib"
             is_default_path = (
@@ -401,9 +413,10 @@ def main(
             data = load_interim(interim_path)
             logger.success(f"✓ Loaded {len(data)} samples from interim data")
 
-            # Log data info to MLflow
+            # Log data info to MLflow with hash for versioning
             logger.debug("Logging data information to MLflow...")
-            mlflow.log_param("data_path", str(interim_path))
+            data_hash = calculate_file_hash(interim_path) if interim_path.exists() else None
+            log_data_info(interim_path, data_hash=data_hash)
             mlflow.log_param("total_samples", len(data))
 
             # Split into train and test sets FIRST (before preprocessing to avoid data leakage)
@@ -462,23 +475,12 @@ def main(
             save_preprocessors(vectorizer, mlb, normalizer, feature_selector)
             logger.success("✓ Preprocessors saved (including feature selector)")
 
-            # Log preprocessing parameters to MLflow
-            logger.debug("Logging preprocessing parameters to MLflow...")
-            mlflow.log_param("preprocessing_max_features", vectorizer.max_features)
-            mlflow.log_param("preprocessing_ngram_range", str(vectorizer.ngram_range))
-            mlflow.log_param("preprocessing_stop_words", vectorizer.stop_words)
-            mlflow.log_param("preprocessing_sublinear_tf", vectorizer.sublinear_tf)
-            mlflow.log_param("preprocessing_feature_selector_k", feature_selector.k)
+            # Log preprocessors as MLflow artifacts (improved tracking)
+            logger.info("Logging preprocessors as MLflow artifacts...")
+            log_preprocessors_as_artifacts(
+                vectorizer, mlb, normalizer, feature_selector, artifact_dir="preprocessors"
+            )
             mlflow.log_param("preprocessing_feature_selector_score_func", "chi2")
-
-            # Log training info to MLflow
-            logger.debug("Logging training configuration to MLflow...")
-            mlflow.log_param("train_size", len(X_train))
-            mlflow.log_param("test_size", len(X_test))
-            mlflow.log_param("n_features", X_train.shape[1])
-            mlflow.log_param("n_classes", len(mlb.classes_))
-            mlflow.log_param("test_size_ratio", test_size)
-            mlflow.log_param("random_state", random_state)
 
             # Train model
             logger.info("=" * 70)
@@ -491,6 +493,39 @@ def main(
             )
             model = train_model(X_train, y_train, model_params=model_params_dict)
             logger.success("✓ Model training completed successfully!")
+
+            # Calculate training metrics
+            logger.info("Calculating training metrics...")
+            try:
+                X_train_array = X_train.values if isinstance(X_train, pd.DataFrame) else X_train
+                y_train_scores = model.decision_function(X_train_array)
+                y_train_proba = expit(y_train_scores)
+                y_train_pred = (y_train_proba >= 0.55).astype(int)
+
+                train_metrics = {
+                    "hamming_loss": float(hamming_loss(y_train, y_train_pred)),
+                    "f1": float(f1_score(y_train, y_train_pred, average="micro", zero_division=0)),
+                    "precision": float(precision_score(y_train, y_train_pred, average="micro", zero_division=0)),
+                    "recall": float(recall_score(y_train, y_train_pred, average="micro", zero_division=0)),
+                    "jaccard": float(jaccard_score(y_train, y_train_pred, average="micro", zero_division=0)),
+                }
+                logger.success("✓ Training metrics calculated")
+            except Exception as e:
+                logger.warning(f"Could not calculate training metrics: {e}")
+                train_metrics = None
+
+            # Log training summary with metrics
+            logger.debug("Logging training summary to MLflow...")
+            log_training_summary(
+                model_name=model_name,
+                train_size=len(X_train),
+                test_size=len(X_test),
+                n_features=X_train.shape[1],
+                n_classes=len(mlb.classes_),
+                metrics=train_metrics,
+            )
+            mlflow.log_param("test_size_ratio", test_size)
+            mlflow.log_param("random_state", random_state)
 
             logger.info("=" * 70)
             logger.info("Saving trained model")
@@ -512,6 +547,18 @@ def main(
             mlflow.sklearn.log_model(model, "model")
             run_id = mlflow.active_run().info.run_id
             logger.success(f"✓ Model logged to MLflow run: {run_id}")
+
+            # Optionally register model in Model Registry
+            # Uncomment and configure if you want to use Model Registry
+            # try:
+            #     register_model(
+            #         model_path="model",
+            #         model_name="movie-genre-classifier",
+            #         stage="None",
+            #         description=f"LinearSVC model trained with C={C}, penalty={penalty}, loss={loss}",
+            #     )
+            # except Exception as e:
+            #     logger.warning(f"Could not register model in registry: {e}")
 
             logger.info("=" * 70)
             logger.success("🎉 Training pipeline completed successfully!")
