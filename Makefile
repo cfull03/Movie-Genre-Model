@@ -155,6 +155,116 @@ api-flask:
 	$(PYTHON_INTERPRETER) app/run.py
 
 #################################################################################
+# DOCKER COMMANDS                                                               #
+#################################################################################
+
+# Docker image and container names
+DOCKER_IMAGE = movie-genre-api
+DOCKER_TAG = latest
+DOCKER_CONTAINER = movie-genre-api
+
+## Build Docker image
+.PHONY: docker-build
+docker-build:
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	@echo ">>> Docker image built: $(DOCKER_IMAGE):$(DOCKER_TAG)"
+
+## Run Docker container (optionally specify PORT, e.g., make docker-run PORT=8080)
+.PHONY: docker-run
+docker-run:
+	@if [ -z "$(PORT)" ]; then \
+		PORT=8000; \
+	else \
+		PORT=$(PORT); \
+	fi; \
+	if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^$(DOCKER_IMAGE):$(DOCKER_TAG)$$"; then \
+		echo ">>> ❌ Docker image not found. Building image first..."; \
+		$(MAKE) docker-build; \
+	fi; \
+	if docker ps -a --format '{{.Names}}' | grep -q "^$(DOCKER_CONTAINER)$$"; then \
+		echo ">>> Stopping existing container..."; \
+		docker stop $(DOCKER_CONTAINER) >/dev/null 2>&1 || true; \
+		docker rm $(DOCKER_CONTAINER) >/dev/null 2>&1 || true; \
+	fi; \
+	echo ">>> Starting Docker container on port $$PORT..."; \
+	if docker run -d -p $$PORT:8000 \
+		-v $(shell pwd)/models:/app/models \
+		--name $(DOCKER_CONTAINER) \
+		$(DOCKER_IMAGE):$(DOCKER_TAG); then \
+		echo ">>> ✅ Docker container started successfully!"; \
+		echo ">>> 🌐 UI available at: http://localhost:$$PORT"; \
+		echo ">>> 📚 API docs at: http://localhost:$$PORT/docs"; \
+		echo ">>> ❤️  Health check: http://localhost:$$PORT/health"; \
+	else \
+		echo ">>> ❌ Failed to start container."; \
+		echo ">>> Check if port $$PORT is already in use or run 'make docker-logs' for details"; \
+		exit 1; \
+	fi
+
+## Stop Docker container
+.PHONY: docker-stop
+docker-stop:
+	@if docker ps --format '{{.Names}}' | grep -q "^$(DOCKER_CONTAINER)$$"; then \
+		docker stop $(DOCKER_CONTAINER) && echo ">>> Container stopped"; \
+	else \
+		echo ">>> Container is not running"; \
+	fi
+	@if docker ps -a --format '{{.Names}}' | grep -q "^$(DOCKER_CONTAINER)$$"; then \
+		docker rm $(DOCKER_CONTAINER) && echo ">>> Container removed"; \
+	fi
+
+## View Docker container logs (follow mode)
+.PHONY: docker-logs
+docker-logs:
+	@if docker ps --format '{{.Names}}' | grep -q "^$(DOCKER_CONTAINER)$$"; then \
+		docker logs -f $(DOCKER_CONTAINER); \
+	else \
+		echo ">>> Container is not running. Use 'make docker-run' to start it."; \
+	fi
+
+## Show Docker container status and URLs
+.PHONY: docker-status
+docker-status:
+	@echo "=== Docker Container Status ==="
+	@docker ps -a --filter name=$(DOCKER_CONTAINER) --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No container found"
+	@echo ""
+	@if docker ps --format '{{.Names}}' | grep -q "^$(DOCKER_CONTAINER)$$"; then \
+		PORT=$$(docker port $(DOCKER_CONTAINER) | cut -d: -f2 | head -1); \
+		echo "✅ Container is running!"; \
+		echo ""; \
+		echo "Access the application:"; \
+		echo "  🌐 UI:        http://localhost:$$PORT"; \
+		echo "  📚 API Docs:  http://localhost:$$PORT/docs"; \
+		echo "  ❤️  Health:    http://localhost:$$PORT/health"; \
+	else \
+		echo "❌ Container is not running"; \
+		echo "Run 'make docker-run' to start it"; \
+	fi
+
+## Show running Docker containers
+.PHONY: docker-ps
+docker-ps:
+	docker ps --filter name=$(DOCKER_CONTAINER)
+
+## Restart Docker container
+.PHONY: docker-restart
+docker-restart: docker-stop docker-run
+
+## Remove Docker container and image
+.PHONY: docker-clean
+docker-clean: docker-stop
+	@if docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^$(DOCKER_IMAGE):$(DOCKER_TAG)$$"; then \
+		docker rmi $(DOCKER_IMAGE):$(DOCKER_TAG) && echo ">>> Docker image removed"; \
+	else \
+		echo ">>> Docker image not found"; \
+	fi
+	@echo ">>> Cleanup complete"
+
+## Rebuild and run Docker container (clean build)
+.PHONY: docker-rebuild
+docker-rebuild: docker-clean docker-build docker-run
+
+#################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
 
