@@ -16,6 +16,10 @@ from app.schemas import (
     HealthResponse,
     ErrorResponse,
     GenrePrediction,
+    GenreWithConfidence,
+    DescriptionValidation,
+    ModelInfoResponse,
+    DescriptionLengthStats,
 )
 from app.services import prediction_service
 
@@ -98,26 +102,98 @@ async def health_check():
     )
 
 
+@app.get(
+    "/info",
+    response_model=ModelInfoResponse,
+    tags=["Info"],
+    summary="Get model information and recommendations",
+    description="Returns comprehensive model metadata, metrics, and description length recommendations"
+)
+async def get_model_info():
+    """
+    Get model information and recommendations.
+    
+    Returns:
+        - Model metadata (name, path, status)
+        - Model performance metrics
+        - Description length statistics and recommendations
+        - Threshold configuration information
+    
+    This endpoint is useful for:
+    - Understanding optimal description length for best predictions
+    - Checking model performance metrics
+    - Getting model configuration details
+    """
+    try:
+        if not prediction_service.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail="Model not loaded. Please ensure the model is trained and available."
+            )
+        
+        info = prediction_service.get_model_info()
+        
+        # Build response with proper schema structure
+        description_stats = None
+        if info.get("description_stats"):
+            stats = info["description_stats"]
+            description_stats = DescriptionLengthStats(**stats)
+        
+        return ModelInfoResponse(
+            model_name=info["model_name"],
+            model_path=info["model_path"],
+            model_loaded=info["model_loaded"],
+            n_classes=info["n_classes"],
+            n_features=info["n_features"],
+            metrics=info["metrics"],
+            description_stats=description_stats,
+            threshold_type=info["threshold_type"]
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting model info: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving model information: {str(e)}")
+
+
 @app.post(
     "/predict",
     response_model=PredictionResponse,
     tags=["Prediction"],
     summary="Predict genres for a single description",
-    description="Predict movie genres from a single description text"
+    description="Predict movie genres from a single description text with confidence scores and validation"
 )
 async def predict(request: PredictionRequest):
     """
     Predict genres for a single movie description.
     
+    Includes:
+    - Genre predictions with confidence scores
+    - Description length validation and recommendations
+    - Optimal description length guidance
+    
     Args:
         request: Prediction request with description and optional parameters
     
     Returns:
-        Prediction response with predicted genres
+        Prediction response with predicted genres, confidence scores, and validation info
     """
     try:
-        # Make prediction
-        predicted_genres = prediction_service.predict(
+        # Get description length stats for validation
+        stats = prediction_service.get_description_length_stats()
+        optimal_min = stats["optimal_min"] if stats else None
+        optimal_max = stats["optimal_max"] if stats else None
+        
+        # Validate description length
+        validation_info = prediction_service.validate_description_length(
+            request.description,
+            optimal_min=optimal_min,
+            optimal_max=optimal_max
+        )
+        
+        # Make prediction with confidence scores
+        predicted_genres, confidence_scores = prediction_service.predict_with_confidence(
             descriptions=[request.description],
             threshold=request.threshold,
             top_k=request.top_k,
@@ -125,15 +201,26 @@ async def predict(request: PredictionRequest):
         )
         
         genres = predicted_genres[0] if predicted_genres else []
+        conf_scores = confidence_scores[0] if confidence_scores else {}
+        
+        # Build genres with confidence
+        genres_with_conf = [
+            GenreWithConfidence(genre=genre, confidence=conf_scores.get(genre, 0.0))
+            for genre in genres
+        ]
+        # Sort by confidence descending
+        genres_with_conf.sort(key=lambda x: x.confidence, reverse=True)
         
         return PredictionResponse(
             description=request.description[:100] + "..." if len(request.description) > 100 else request.description,
             prediction=GenrePrediction(
                 genres=list(genres),
-                genre_count=len(genres)
+                genre_count=len(genres),
+                genres_with_confidence=genres_with_conf
             ),
             threshold=request.threshold,
-            top_k=request.top_k
+            top_k=request.top_k,
+            validation=DescriptionValidation(**validation_info) if validation_info else None
         )
     
     except FileNotFoundError as e:
@@ -148,39 +235,64 @@ async def predict(request: PredictionRequest):
     response_model=BatchPredictionResponse,
     tags=["Prediction"],
     summary="Predict genres for multiple descriptions",
-    description="Predict movie genres for a batch of descriptions"
+    description="Predict movie genres for a batch of descriptions with confidence scores and validation"
 )
 async def predict_batch(request: BatchPredictionRequest):
     """
     Predict genres for multiple movie descriptions.
     
+    Includes:
+    - Genre predictions with confidence scores for each description
+    - Description length validation and recommendations for each description
+    
     Args:
         request: Batch prediction request with list of descriptions
     
     Returns:
-        Batch prediction response with all predictions
+        Batch prediction response with all predictions, confidence scores, and validation info
     """
     try:
-        # Make predictions
-        predicted_genres = prediction_service.predict(
+        # Get description length stats for validation
+        stats = prediction_service.get_description_length_stats()
+        optimal_min = stats["optimal_min"] if stats else None
+        optimal_max = stats["optimal_max"] if stats else None
+        
+        # Make predictions with confidence scores
+        predicted_genres, confidence_scores = prediction_service.predict_with_confidence(
             descriptions=request.descriptions,
             threshold=request.threshold,
             top_k=request.top_k,
             model_path=request.model_path,
         )
         
-        # Format responses
+        # Format responses with validation
         predictions = []
-        for desc, genres in zip(request.descriptions, predicted_genres):
+        for desc, genres, conf_scores in zip(request.descriptions, predicted_genres, confidence_scores):
+            # Validate description length
+            validation_info = prediction_service.validate_description_length(
+                desc,
+                optimal_min=optimal_min,
+                optimal_max=optimal_max
+            )
+            
+            # Build genres with confidence
+            genres_with_conf = [
+                GenreWithConfidence(genre=genre, confidence=conf_scores.get(genre, 0.0))
+                for genre in genres
+            ]
+            genres_with_conf.sort(key=lambda x: x.confidence, reverse=True)
+            
             predictions.append(
                 PredictionResponse(
                     description=desc[:100] + "..." if len(desc) > 100 else desc,
                     prediction=GenrePrediction(
                         genres=list(genres),
-                        genre_count=len(genres)
+                        genre_count=len(genres),
+                        genres_with_confidence=genres_with_conf
                     ),
                     threshold=request.threshold,
-                    top_k=request.top_k
+                    top_k=request.top_k,
+                    validation=DescriptionValidation(**validation_info) if validation_info else None
                 )
             )
         
