@@ -15,6 +15,7 @@ This project implements an end-to-end machine learning pipeline for multi-label 
 - **Multi-label Classification**: Predicts multiple genres per movie (e.g., "Action, Adventure, Thriller")
 - **Production-Ready Pipeline**: Complete workflow from raw data to trained model
 - **REST API**: FastAPI-based API with `/predict` and `/predict/batch` endpoints
+- **Docker Support**: Containerized deployment for easy production deployment
 - **Top-K Genre Selection**: Selects top k genres by probability, filtered by threshold (default: top 3)
 - **MLflow Integration**: Comprehensive experiment tracking and model versioning
 - **Generalization-Focused**: LinearSVC with strong regularization (C=0.1) prevents overfitting
@@ -41,8 +42,12 @@ See the [Model Evaluation Report](reports/model_evaluation_report.md) for detail
 
 ### Prerequisites
 
+**Option 1: Local Development (Conda)**
 - Python 3.12
 - Conda (for environment management)
+
+**Option 2: Docker Deployment**
+- Docker and Docker Compose (optional)
 
 ### Installation
 
@@ -183,6 +188,8 @@ curl -X POST "http://localhost:8000/predict/batch" \
 ├── LICENSE            <- Open-source license
 ├── Makefile           <- Convenience commands for common tasks
 ├── README.md          <- This file
+├── Dockerfile         <- Docker configuration for containerized deployment
+├── .dockerignore      <- Docker build exclusions
 ├── environment.yml    <- Conda environment specification
 ├── pyproject.toml     <- Project configuration
 │
@@ -311,6 +318,110 @@ The API will be available at `http://localhost:8000` with:
 - **Error Handling**: Comprehensive error responses
 
 See the interactive documentation at `/docs` for detailed request/response schemas and examples.
+
+## 🐳 Docker Deployment
+
+The project includes a Dockerfile for containerized deployment. This is the recommended approach for production deployments.
+
+### Prerequisites
+
+- Docker installed on your system
+- Trained models in the `models/` directory (or mount them as a volume)
+
+### Building the Docker Image
+
+Build the Docker image:
+
+```bash
+docker build -t movie-genre-api .
+```
+
+### Running the Container
+
+**Basic run:**
+```bash
+docker run -p 8000:8000 movie-genre-api
+```
+
+**With volume mount for models (recommended for production):**
+```bash
+docker run -p 8000:8000 \
+  -v $(pwd)/models:/app/models \
+  movie-genre-api
+```
+
+**With environment variables:**
+```bash
+docker run -p 8000:8000 \
+  -e PORT=8000 \
+  -v $(pwd)/models:/app/models \
+  movie-genre-api
+```
+
+The API will be available at `http://localhost:8000`.
+
+### Docker Features
+
+- **Health Checks**: Built-in health check endpoint monitoring
+- **Optimized Image**: Uses Python 3.12 slim image for smaller size
+- **Production Ready**: Includes all necessary dependencies
+- **Volume Support**: Models can be mounted as volumes for easy updates
+
+### Important Notes
+
+1. **Models Required**: The Docker container needs access to trained model files. Either:
+   - Copy model files into the image during build, or
+   - Mount the `models/` directory as a volume at runtime (recommended)
+
+2. **Model Location**: Ensure your trained models are in the `models/` directory before building or mounting.
+
+3. **Health Check**: The container includes a health check that monitors the `/health` endpoint.
+
+### Testing the Docker Container
+
+Once the container is running, test it:
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Make a prediction
+curl -X POST "http://localhost:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "A thrilling action movie about a secret agent",
+    "threshold": null,
+    "top_k": 3
+  }'
+```
+
+### Docker Compose (Optional)
+
+For easier local development with Docker Compose, create a `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+    environment:
+      - PORT=8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+```
+
+Then run:
+```bash
+docker-compose up
+```
 
 ## 📈 MLflow Integration
 
@@ -488,4 +599,4 @@ For questions or issues, please open an issue on the repository.
 **Model Version**: 2.0 (LinearSVC)  
 **Performance**: 69.65% F1-score, 9.95% Hamming Loss, 78.93% Precision  
 **Model Selection**: LinearSVC chosen over LogisticRegression to address overfitting concerns  
-**Latest Features**: Top-k genre selection, REST API with FastAPI
+**Latest Features**: Top-k genre selection, per-label thresholds, REST API with FastAPI, Docker support
