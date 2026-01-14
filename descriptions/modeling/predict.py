@@ -136,7 +136,9 @@ def predict_genres(
             logger.info(f"Using per-label thresholds for {len(per_label_thresholds)} labels")
         else:
             global_threshold = 0.55
-            logger.info(f"Per-label thresholds not found, using global threshold: {global_threshold}")
+            logger.info(
+                f"Per-label thresholds not found, using global threshold: {global_threshold}"
+            )
 
     # Apply thresholds and select top-k genres per sample
     y_pred_binary = np.zeros_like(y_proba, dtype=int)
@@ -147,12 +149,16 @@ def predict_genres(
         for label_idx, label_name in enumerate(mlb.classes_):
             if label_name in per_label_thresholds:
                 label_threshold = per_label_thresholds[label_name]
-                y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(int)
+                y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(
+                    int
+                )
             else:
                 logger.debug(
                     f"Threshold not found for label '{label_name}', using global threshold {global_threshold}"
                 )
-                y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= global_threshold).astype(int)
+                y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= global_threshold).astype(
+                    int
+                )
         logger.debug("Binary predictions generated using per-label thresholds")
     else:
         # Use global threshold
@@ -165,12 +171,12 @@ def predict_genres(
     for i in range(y_proba.shape[0]):
         # Get indices of genres that passed threshold
         passed_indices = np.where(y_pred_binary[i] == 1)[0]
-        
+
         if len(passed_indices) > top_k:
             # Select top-k by probability from those that passed
             passed_proba = y_proba[i, passed_indices]
             top_k_passed_indices = passed_indices[np.argsort(passed_proba)[-top_k:][::-1]]
-            
+
             # Reset all predictions for this sample
             y_pred_binary[i, :] = 0
             # Set only the top-k

@@ -13,13 +13,13 @@ import typer
 
 from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim, load_processed
-from descriptions.modeling.model import get_model_name, load_model
 from descriptions.modeling.mlflow_utils import (
-    setup_experiment,
-    log_metrics_dict,
-    log_data_info,
     calculate_file_hash,
+    log_data_info,
+    log_metrics_dict,
+    setup_experiment,
 )
+from descriptions.modeling.model import get_model_name, load_model
 from descriptions.modeling.preprocess import load_preprocessors
 from descriptions.modeling.train import prepare_features_and_labels, split_data
 
@@ -457,11 +457,15 @@ def main(
             per_label_thresholds_loaded = load_per_label_thresholds()
             if per_label_thresholds_loaded:
                 threshold_param = per_label_thresholds_loaded
-                logger.info(f"Using per-label thresholds for {len(per_label_thresholds_loaded)} labels")
+                logger.info(
+                    f"Using per-label thresholds for {len(per_label_thresholds_loaded)} labels"
+                )
             else:
                 # Fall back to global threshold
                 threshold_param = threshold if threshold is not None else 0.55
-                logger.info(f"Per-label thresholds not found, using global threshold: {threshold_param}")
+                logger.info(
+                    f"Per-label thresholds not found, using global threshold: {threshold_param}"
+                )
 
         logger.info(f"Evaluating model on {len(X)} samples...")
         metrics = evaluate_model(model, X, y, threshold=threshold_param, mlb=mlb)
@@ -479,7 +483,9 @@ def main(
                 mlflow.log_param("evaluation_threshold_min", float(np.min(threshold_values)))
                 mlflow.log_param("evaluation_threshold_max", float(np.max(threshold_values)))
                 # Log per-label thresholds as a JSON artifact
-                mlflow.log_dict(per_label_thresholds_loaded, "evaluation_per_label_thresholds.json")
+                mlflow.log_dict(
+                    per_label_thresholds_loaded, "evaluation_per_label_thresholds.json"
+                )
             else:
                 mlflow.log_param("evaluation_threshold_type", "global")
                 mlflow.log_param("evaluation_threshold", threshold_param)

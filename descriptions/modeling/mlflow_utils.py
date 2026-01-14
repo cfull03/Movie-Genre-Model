@@ -7,18 +7,16 @@ This module provides helper functions for:
 - Run linking and organization
 """
 
-import os
-import sys
-import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any
-import json
+import subprocess
+import sys
+from typing import Any, Dict, Optional
 
 from loguru import logger
 import mlflow
 import mlflow.sklearn
 
-from descriptions.config import PROJ_ROOT, MODELS_DIR
+from descriptions.config import PROJ_ROOT
 
 
 def log_git_info() -> None:
@@ -32,27 +30,39 @@ def log_git_info() -> None:
 
     try:
         # Get git commit hash
-        commit_hash = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=PROJ_ROOT, stderr=subprocess.DEVNULL
-        ).decode("utf-8").strip()
+        commit_hash = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=PROJ_ROOT, stderr=subprocess.DEVNULL
+            )
+            .decode("utf-8")
+            .strip()
+        )
 
         # Get git branch
         try:
-            branch = subprocess.check_output(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                cwd=PROJ_ROOT,
-                stderr=subprocess.DEVNULL,
-            ).decode("utf-8").strip()
+            branch = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=PROJ_ROOT,
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode("utf-8")
+                .strip()
+            )
         except subprocess.CalledProcessError:
             branch = "unknown"
 
         # Get repository URL (if available)
         try:
-            remote_url = subprocess.check_output(
-                ["git", "config", "--get", "remote.origin.url"],
-                cwd=PROJ_ROOT,
-                stderr=subprocess.DEVNULL,
-            ).decode("utf-8").strip()
+            remote_url = (
+                subprocess.check_output(
+                    ["git", "config", "--get", "remote.origin.url"],
+                    cwd=PROJ_ROOT,
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode("utf-8")
+                .strip()
+            )
         except subprocess.CalledProcessError:
             remote_url = None
 
@@ -132,8 +142,9 @@ def log_preprocessors_as_artifacts(
         logger.warning("No active MLflow run. Skipping preprocessor logging.")
         return
 
-    import joblib
     import tempfile
+
+    import joblib
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -186,6 +197,7 @@ def log_figure(figure: Any, artifact_path: str, clear_figure: bool = True) -> No
         logger.debug(f"Logged figure to {artifact_path}")
         if clear_figure:
             import matplotlib.pyplot as plt
+
             plt.close(figure)
     except Exception as e:
         logger.warning(f"Could not log figure: {e}")
@@ -207,9 +219,7 @@ def log_metrics_dict(metrics: Dict[str, float], prefix: str = "") -> None:
         mlflow.log_metric(full_name, value)
 
 
-def setup_experiment(
-    experiment_name: str, create_if_not_exists: bool = True
-) -> str:
+def setup_experiment(experiment_name: str, create_if_not_exists: bool = True) -> str:
     """Set up an MLflow experiment and return experiment ID.
 
     Args:
@@ -291,9 +301,7 @@ def register_model(
                 f"✓ Registered model '{model_name}' version {model_version.version} to stage '{stage}'"
             )
         else:
-            logger.success(
-                f"✓ Registered model '{model_name}' version {model_version.version}"
-            )
+            logger.success(f"✓ Registered model '{model_name}' version {model_version.version}")
 
         return model_version.version
 

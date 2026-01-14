@@ -7,27 +7,26 @@ import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
+from scipy.special import expit  # Sigmoid function for converting scores to probabilities
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.metrics import f1_score, hamming_loss, jaccard_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import Normalizer
-from scipy.special import expit  # Sigmoid function for converting scores to probabilities
 from tqdm import tqdm
 import typer
 
 from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim
-from descriptions.modeling.model import build_model, get_model_name, save_model
 from descriptions.modeling.mlflow_utils import (
-    setup_experiment,
-    log_git_info,
-    log_environment_info,
-    log_preprocessors_as_artifacts,
-    log_data_info,
-    log_training_summary,
     calculate_file_hash,
-    register_model,
+    log_data_info,
+    log_environment_info,
+    log_git_info,
+    log_preprocessors_as_artifacts,
+    log_training_summary,
+    setup_experiment,
 )
+from descriptions.modeling.model import build_model, get_model_name, save_model
 from descriptions.modeling.preprocess import (
     _generate_descriptions,
     _generate_targets,
@@ -505,9 +504,15 @@ def main(
                 train_metrics = {
                     "hamming_loss": float(hamming_loss(y_train, y_train_pred)),
                     "f1": float(f1_score(y_train, y_train_pred, average="micro", zero_division=0)),
-                    "precision": float(precision_score(y_train, y_train_pred, average="micro", zero_division=0)),
-                    "recall": float(recall_score(y_train, y_train_pred, average="micro", zero_division=0)),
-                    "jaccard": float(jaccard_score(y_train, y_train_pred, average="micro", zero_division=0)),
+                    "precision": float(
+                        precision_score(y_train, y_train_pred, average="micro", zero_division=0)
+                    ),
+                    "recall": float(
+                        recall_score(y_train, y_train_pred, average="micro", zero_division=0)
+                    ),
+                    "jaccard": float(
+                        jaccard_score(y_train, y_train_pred, average="micro", zero_division=0)
+                    ),
                 }
                 logger.success("✓ Training metrics calculated")
             except Exception as e:
