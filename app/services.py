@@ -1,12 +1,15 @@
 """Service layer for prediction logic."""
 
+import json
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import pandas as pd
 from loguru import logger
 
-from descriptions.config import MODELS_DIR
+from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
+from descriptions.dataset import load_interim
 from descriptions.modeling.evaluate import load_per_label_thresholds
 from descriptions.modeling.model import load_model
 from descriptions.modeling.preprocess import load_preprocessors
@@ -198,6 +201,266 @@ class PredictionService:
         predicted_genres = self.mlb.inverse_transform(y_pred_binary)
         
         return predicted_genres
+    
+    def predict_with_confidence(
+        self,
+        descriptions: List[str],
+        threshold: Optional[Union[float, Dict[str, float]]] = None,
+        top_k: int = 3,
+        model_path: Optional[str] = None,
+        use_global_threshold: bool = False,
+    ) -> Tuple[List[List[str]], List[Dict[str, float]]]:
+        """
+        Predict genres for descriptions with confidence scores.
+        
+        Args:
+            descriptions: List of movie descriptions
+            threshold: Probability threshold for predictions. Can be:
+                      - None: Uses per-label thresholds if available, else 0.55
+                      - float: Global threshold value (overrides per-label thresholds)
+                      - Dict[str, float]: Per-label thresholds (genre name -> threshold)
+            top_k: Maximum number of top genres to select (default: 3).
+                   The top k genres by probability will be selected, but only
+                   those above their threshold will be returned.
+            model_path: Optional model path (will reload if different)
+            use_global_threshold: If True, forces use of global threshold even if
+                                 per-label thresholds are available.
+        
+        Returns:
+            Tuple of (predicted genres list, confidence scores list)
+            - predicted genres: List of lists of predicted genre names
+            - confidence scores: List of dicts mapping genre name to confidence score
+        """
+        from scipy.special import expit
+        
+        # Load model if not loaded or if different model requested
+        if not self._is_loaded or (model_path and model_path != self.model_path):
+            self.load_model(model_path)
+        
+        if not self._is_loaded:
+            raise RuntimeError("Model not loaded. Cannot make predictions.")
+        
+        # Transform descriptions to TF-IDF features
+        X = self.vectorizer.transform(descriptions)
+        
+        # Apply L2 normalization
+        X = self.normalizer.transform(X)
+        
+        # Apply feature selection
+        X = self.feature_selector.transform(X)
+        
+        # Convert to dense array for LinearSVC (handle both sparse and dense)
+        if hasattr(X, 'toarray'):
+            X_dense = X.toarray()
+        else:
+            X_dense = X
+        
+        # Get prediction scores
+        y_scores = self.model.decision_function(X_dense)
+        
+        # Convert scores to probabilities using sigmoid function
+        y_proba = expit(y_scores)
+        
+        # Determine which thresholds to use
+        per_label_thresholds: Optional[Dict[str, float]] = None
+        global_threshold = 0.55
+
+        if use_global_threshold:
+            global_threshold = 0.55 if threshold is None or isinstance(threshold, dict) else threshold
+            logger.debug(f"Using global threshold: {global_threshold}")
+        elif isinstance(threshold, dict):
+            per_label_thresholds = threshold
+            logger.debug(f"Using provided per-label thresholds for {len(per_label_thresholds)} labels")
+        elif threshold is not None:
+            global_threshold = threshold
+            logger.debug(f"Using global threshold: {global_threshold}")
+        else:
+            per_label_thresholds = load_per_label_thresholds()
+            if per_label_thresholds:
+                logger.debug(f"Using per-label thresholds for {len(per_label_thresholds)} labels")
+            else:
+                global_threshold = 0.55
+                logger.debug(f"Per-label thresholds not found, using global threshold: {global_threshold}")
+
+        # Apply thresholds
+        y_pred_binary = np.zeros_like(y_proba, dtype=int)
+
+        if per_label_thresholds:
+            for label_idx, label_name in enumerate(self.mlb.classes_):
+                if label_name in per_label_thresholds:
+                    label_threshold = per_label_thresholds[label_name]
+                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(int)
+                else:
+                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= global_threshold).astype(int)
+        else:
+            y_pred_binary = (y_proba >= global_threshold).astype(int)
+
+        # Apply top-k selection
+        for i in range(y_proba.shape[0]):
+            passed_indices = np.where(y_pred_binary[i] == 1)[0]
+            
+            if len(passed_indices) > top_k:
+                passed_proba = y_proba[i, passed_indices]
+                top_k_passed_indices = passed_indices[np.argsort(passed_proba)[-top_k:][::-1]]
+                
+                y_pred_binary[i, :] = 0
+                y_pred_binary[i, top_k_passed_indices] = 1
+        
+        # Decode predictions back to genre labels
+        predicted_genres = self.mlb.inverse_transform(y_pred_binary)
+        
+        # Build confidence scores for each prediction
+        confidence_scores = []
+        for i, genres in enumerate(predicted_genres):
+            conf_dict = {}
+            for genre in genres:
+                # Find the index of this genre
+                if genre in self.mlb.classes_:
+                    genre_idx = list(self.mlb.classes_).index(genre)
+                    conf_dict[genre] = float(y_proba[i, genre_idx])
+            confidence_scores.append(conf_dict)
+        
+        return predicted_genres, confidence_scores
+    
+    def get_description_length_stats(self) -> Optional[Dict[str, float]]:
+        """
+        Analyze description lengths from training data.
+        
+        Returns:
+            Dictionary with description length statistics, or None if data not available
+        """
+        try:
+            # Try to load interim data
+            interim_path = INTERIM_DATA_DIR / "cleaned_movies.csv"
+            if not interim_path.exists():
+                logger.warning(f"Training data not found at {interim_path}")
+                return None
+            
+            data = load_interim(interim_path)
+            
+            if "description" not in data.columns:
+                logger.warning("'description' column not found in training data")
+                return None
+            
+            # Calculate description lengths
+            lengths = data["description"].fillna("").astype(str).str.len()
+            lengths = lengths[lengths > 0]  # Remove empty descriptions
+            
+            if len(lengths) == 0:
+                logger.warning("No valid descriptions found in training data")
+                return None
+            
+            stats = {
+                "min": int(lengths.min()),
+                "max": int(lengths.max()),
+                "mean": float(lengths.mean()),
+                "median": float(lengths.median()),
+                "q25": float(lengths.quantile(0.25)),
+                "q75": float(lengths.quantile(0.75)),
+                "optimal_min": int(lengths.quantile(0.25)),  # Use Q1 as recommended minimum
+                "optimal_max": int(lengths.quantile(0.75)),  # Use Q3 as recommended maximum
+            }
+            
+            logger.debug(f"Description length stats calculated: {stats}")
+            return stats
+            
+        except Exception as e:
+            logger.warning(f"Error calculating description length stats: {e}")
+            return None
+    
+    def validate_description_length(
+        self, 
+        description: str,
+        optimal_min: Optional[int] = None,
+        optimal_max: Optional[int] = None
+    ) -> Dict[str, Union[int, bool, Optional[str]]]:
+        """
+        Validate description length and provide recommendations.
+        
+        Args:
+            description: Description text to validate
+            optimal_min: Recommended minimum length (if None, will calculate from stats)
+            optimal_max: Recommended maximum length (if None, will calculate from stats)
+        
+        Returns:
+            Dictionary with validation results
+        """
+        length = len(description)
+        
+        # Get optimal ranges if not provided
+        if optimal_min is None or optimal_max is None:
+            stats = self.get_description_length_stats()
+            if stats:
+                optimal_min = stats.get("optimal_min", 100)
+                optimal_max = stats.get("optimal_max", 500)
+            else:
+                # Default values if stats not available
+                optimal_min = 100
+                optimal_max = 500
+        
+        is_optimal = optimal_min <= length <= optimal_max
+        recommendation = None
+        
+        if not is_optimal:
+            if length < optimal_min:
+                recommendation = (
+                    f"Description is too short ({length} chars). "
+                    f"Recommended minimum: {optimal_min} characters. "
+                    f"Shorter descriptions may result in less accurate predictions."
+                )
+            elif length > optimal_max:
+                recommendation = (
+                    f"Description is quite long ({length} chars). "
+                    f"Recommended maximum: {optimal_max} characters. "
+                    f"Very long descriptions may not improve accuracy."
+                )
+        
+        return {
+            "length": length,
+            "is_optimal": is_optimal,
+            "recommendation": recommendation,
+            "optimal_min": optimal_min,
+            "optimal_max": optimal_max,
+        }
+    
+    def get_model_info(self) -> Dict:
+        """
+        Get comprehensive model information.
+        
+        Returns:
+            Dictionary with model information including metrics and stats
+        """
+        info = {
+            "model_name": Path(self.model_path).name if self.model_path else "unknown",
+            "model_path": self.model_path or "not loaded",
+            "model_loaded": self._is_loaded,
+            "n_classes": len(self.mlb.classes_) if self.mlb else 0,
+            "n_features": self.feature_selector.k if self.feature_selector else 0,
+            "metrics": None,
+            "description_stats": None,
+            "threshold_type": "unknown",
+        }
+        
+        # Try to load metrics
+        try:
+            metrics_path = MODELS_DIR / "metrics_linearsvc.json"
+            if metrics_path.exists():
+                with open(metrics_path, "r") as f:
+                    info["metrics"] = json.load(f)
+        except Exception as e:
+            logger.debug(f"Could not load metrics: {e}")
+        
+        # Get description stats
+        info["description_stats"] = self.get_description_length_stats()
+        
+        # Determine threshold type
+        per_label_thresholds = load_per_label_thresholds()
+        if per_label_thresholds:
+            info["threshold_type"] = "per-label"
+        else:
+            info["threshold_type"] = "global"
+        
+        return info
     
     def is_ready(self) -> bool:
         """Check if service is ready (model loaded)."""
