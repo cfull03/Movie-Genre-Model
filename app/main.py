@@ -55,6 +55,10 @@ async def startup_event():
     try:
         prediction_service.load_model()
         logger.success("✓ API startup complete - model loaded")
+    except FileNotFoundError as e:
+        logger.error(f"Model files not found: {e}")
+        logger.warning("API will start but predictions will not be available until models are loaded")
+        logger.info("To load models: Place .joblib files in the models/ directory or mount as volume")
     except Exception as e:
         logger.error(f"Error during startup: {e}")
         logger.warning("API will start but model may not be loaded")
