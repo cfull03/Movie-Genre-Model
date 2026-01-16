@@ -55,8 +55,13 @@ data/external/
 # MLflow (not needed in container)
 mlruns/
 
-# Reports
+# Reports (excluding figures that might be needed)
 reports/
+!reports/figures/
+
+# Models - keep .gitkeep but allow .joblib files to be included
+# Note: *.joblib files should be built/trained before building Docker image
+# or mounted as volumes at runtime
 
 # OS
 .DS_Store
