@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: movie-genre-api
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      # Mount models directory so models can be updated without rebuilding
+      - ./models:/app/models:ro
+      # Optionally mount data directory if description stats are needed
+      - ./data/interim:/app/data/interim:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=${DEBUG:-false}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
