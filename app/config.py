@@ -25,14 +25,6 @@ class Settings(BaseSettings):
     MODELS_DIR: Path = Path("models")
     PROJECT_ROOT: Path = Path(__file__).parent.parent
     
-    # Legacy Flask environment variables (ignored but allowed)
-    FLASK_ENV: str | None = None
-    API_HOST: str | None = None
-    API_PORT: int | None = None
-    API_DEBUG: bool | None = None
-    LOG_LEVEL: str | None = None
-    CORS_ORIGINS: str | None = None
-    
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
