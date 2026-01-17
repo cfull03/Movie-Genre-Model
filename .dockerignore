@@ -1,45 +1,23 @@
 # Git
 .git
 .gitignore
-.github/
+.gitattributes
 
-# Documentation
-docs/
-# Note: README.md is kept because pyproject.toml references it
-*.md
-!README.md
-
-# Testing
-tests/
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-*.cover
-
-# Jupyter Notebooks
-notebooks/
-.ipynb_checkpoints/
-*.ipynb
-
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.Python
 *.egg-info/
-
-# Build artifacts
-build/
 dist/
-*.egg
+build/
 
-# Environment files
-.env
-.venv
+# Virtual environments
 venv/
 env/
 ENV/
+.venv
 
 # IDE
 .vscode/
@@ -47,21 +25,30 @@ ENV/
 *.swp
 *.swo
 
-# Data (not needed in container - models should be included or mounted)
-data/raw/
-data/interim/
-data/external/
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
 
-# MLflow (not needed in container)
+# Documentation
+docs/site/
+*.md
+!README.md
+
+# Data (will be mounted as volume)
+data/
+
+# Models (will be mounted as volume)
+models/*.joblib
+
+# MLflow
 mlruns/
 
-# Reports (excluding figures that might be needed)
-reports/
-!reports/figures/
-
-# Models - keep .gitkeep but allow .joblib files to be included
-# Note: *.joblib files should be built/trained before building Docker image
-# or mounted as volumes at runtime
+# Jupyter
+.ipynb_checkpoints/
+notebooks/
 
 # OS
 .DS_Store
@@ -70,5 +57,17 @@ Thumbs.db
 # Logs
 *.log
 
-# CI/CD
-.pre-commit-config.yaml
+# Environment files
+.env
+.env.local
+
+# Makefile
+Makefile
+
+# Docker
+docker-compose.yml
+.dockerignore
+Dockerfile
+
+# References
+references/

@@ -25,17 +25,25 @@ clean:
 	find . -type f -name "*.py[co]" -delete
 	find . -type d -name "__pycache__" -delete
 
+## Clean generated files (models, processed data, reports, mlruns)
+## WARNING: This deletes generated artifacts. Use with caution!
 .PHONY: reset
 reset: clean
-	find . -type f -name "*.joblib" -delete
-	find . -type d -name "models" -delete
-	find . -type d -name "data" -delete
-	find . -type d -name "reports" -delete
-	find . -type d -name "figures" -delete
-	find . -type d -name "notebooks" -delete
-	find . -type d -name "tests" -delete
-	find . -type d -name "docs" -delete
-	find . -type d -name "examples" -delete
+	@echo "⚠️  WARNING: This will delete generated files and artifacts!"
+	@echo "   This includes: models/, data/interim/, data/processed/, reports/, mlruns/"
+	@echo "   Use 'make reset CONFIRM=yes' to proceed without confirmation"
+	@if [ "$(CONFIRM)" != "yes" ]; then \
+		echo ""; \
+		echo "Aborted. Run 'make reset CONFIRM=yes' to confirm deletion."; \
+		exit 1; \
+	fi
+	@echo "Cleaning up generated files..."
+	@find . -type f -name "*.joblib" -not -path "./.git/*" -delete 2>/dev/null || true
+	@rm -rf models/*.joblib models/*.json 2>/dev/null || true
+	@rm -rf data/interim/* data/processed/* 2>/dev/null || true
+	@rm -rf reports/figures/* reports/*.csv reports/*.json reports/*.md 2>/dev/null || true
+	@rm -rf mlruns/* 2>/dev/null || true
+	@echo "✅ Cleanup complete"
 
 
 ## Lint using ruff (use `make format` to do formatting)
@@ -148,11 +156,6 @@ api:
 .PHONY: api-prod
 api-prod:
 	uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-
-## Start Flask API server (legacy)
-.PHONY: api-flask
-api-flask:
-	$(PYTHON_INTERPRETER) app/run.py
 
 #################################################################################
 # DOCKER COMMANDS                                                               #

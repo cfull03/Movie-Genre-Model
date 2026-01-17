@@ -8,8 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
+# Copy dependency files and source code needed for installation
 COPY pyproject.toml README.md LICENSE ./
+COPY descriptions/ ./descriptions/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
