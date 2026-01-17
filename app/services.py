@@ -181,10 +181,13 @@ class PredictionService:
             Binary predictions array (n_samples, n_classes)
         """
         y_pred_binary = np.zeros_like(y_proba, dtype=int)
+        n_classes = y_proba.shape[1]
         
         if per_label_thresholds:
             # Use per-label thresholds
-            for label_idx, label_name in enumerate(self.mlb.classes_):
+            # Iterate only over the actual number of classes in the probability array
+            for label_idx in range(min(n_classes, len(self.mlb.classes_))):
+                label_name = self.mlb.classes_[label_idx]
                 if label_name in per_label_thresholds:
                     label_threshold = per_label_thresholds[label_name]
                     y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(int)

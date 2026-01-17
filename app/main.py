@@ -3,6 +3,7 @@
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from loguru import logger
@@ -76,11 +77,23 @@ async def shutdown_event():
     summary="Root endpoint",
     description="Returns API information or serves UI"
 )
-async def root():
-    """Root endpoint - serves the UI."""
+async def root(request: Request):
+    """Root endpoint - serves the UI or returns API info as JSON."""
+    # Check Accept header - if JSON is preferred, return JSON
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept or "text/html" not in accept:
+        return {
+            "message": "Movie Genre Prediction API",
+            "version": settings.API_VERSION,
+            "docs": "/docs",
+            "health": "/health"
+        }
+    
+    # Otherwise, serve HTML if available
     html_file = static_dir / "index.html"
     if html_file.exists():
         return FileResponse(html_file)
+    
     return {
         "message": "Movie Genre Prediction API",
         "version": settings.API_VERSION,

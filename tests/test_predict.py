@@ -19,6 +19,8 @@ def mock_model_and_preprocessors():
     
     mock_mlb = Mock()
     mock_mlb.inverse_transform.return_value = [('Action', 'Thriller', 'Drama')]
+    # Set classes_ to have enough elements for all test cases (at least 6 for test_custom_top_k)
+    mock_mlb.classes_ = ['Action', 'Thriller', 'Drama', 'Comedy', 'Romance', 'Horror']
     
     mock_normalizer = Mock()
     mock_normalizer.transform.return_value = np.array([[1, 2, 3]])
@@ -32,13 +34,15 @@ def mock_model_and_preprocessors():
 class TestPredictGenresTopK:
     """Tests for top-k selection in predict_genres."""
     
+    @patch('descriptions.modeling.predict.load_per_label_thresholds')
     @patch('descriptions.modeling.predict.load_model')
     @patch('descriptions.modeling.predict.load_preprocessors')
-    def test_default_top_k(self, mock_load_preprocessors, mock_load_model, mock_model_and_preprocessors):
+    def test_default_top_k(self, mock_load_preprocessors, mock_load_model, mock_load_thresholds, mock_model_and_preprocessors):
         """Predict_genres uses default top_k=3."""
         mock_model, preprocessors = mock_model_and_preprocessors
         mock_load_model.return_value = mock_model
         mock_load_preprocessors.return_value = preprocessors
+        mock_load_thresholds.return_value = None
         
         with patch('descriptions.modeling.predict.MODELS_DIR') as mock_models_dir:
             mock_models_dir.glob.return_value = [Mock(name='linearsvc.joblib')]
@@ -46,14 +50,16 @@ class TestPredictGenresTopK:
             assert isinstance(result, list)
             assert len(result) == 1
     
+    @patch('descriptions.modeling.predict.load_per_label_thresholds')
     @patch('descriptions.modeling.predict.load_model')
     @patch('descriptions.modeling.predict.load_preprocessors')
-    def test_custom_top_k(self, mock_load_preprocessors, mock_load_model, mock_model_and_preprocessors):
+    def test_custom_top_k(self, mock_load_preprocessors, mock_load_model, mock_load_thresholds, mock_model_and_preprocessors):
         """Predict_genres respects custom top_k parameter."""
         mock_model, preprocessors = mock_model_and_preprocessors
         mock_model.decision_function.return_value = np.array([[0.9, 0.8, 0.7, 0.6, 0.5, 0.4]])
         mock_load_model.return_value = mock_model
         mock_load_preprocessors.return_value = preprocessors
+        mock_load_thresholds.return_value = None
         
         with patch('descriptions.modeling.predict.MODELS_DIR') as mock_models_dir:
             mock_models_dir.glob.return_value = [Mock(name='linearsvc.joblib')]
@@ -61,15 +67,17 @@ class TestPredictGenresTopK:
             assert isinstance(result, list)
             assert len(result) == 1
     
+    @patch('descriptions.modeling.predict.load_per_label_thresholds')
     @patch('descriptions.modeling.predict.load_model')
     @patch('descriptions.modeling.predict.load_preprocessors')
-    def test_top_k_with_threshold(self, mock_load_preprocessors, mock_load_model, mock_model_and_preprocessors):
+    def test_top_k_with_threshold(self, mock_load_preprocessors, mock_load_model, mock_load_thresholds, mock_model_and_preprocessors):
         """Top_k selection respects threshold."""
         mock_model, preprocessors = mock_model_and_preprocessors
         mock_model.decision_function.return_value = np.array([[1.4, 1.0, -0.4, -0.8, -1.2]])
         preprocessors[1].inverse_transform.return_value = [('Action', 'Thriller')]
         mock_load_model.return_value = mock_model
         mock_load_preprocessors.return_value = preprocessors
+        mock_load_thresholds.return_value = None
         
         with patch('descriptions.modeling.predict.MODELS_DIR') as mock_models_dir:
             mock_models_dir.glob.return_value = [Mock(name='linearsvc.joblib')]
@@ -77,9 +85,10 @@ class TestPredictGenresTopK:
             assert isinstance(result, list)
             assert len(result) == 1
     
+    @patch('descriptions.modeling.predict.load_per_label_thresholds')
     @patch('descriptions.modeling.predict.load_model')
     @patch('descriptions.modeling.predict.load_preprocessors')
-    def test_multiple_descriptions(self, mock_load_preprocessors, mock_load_model, mock_model_and_preprocessors):
+    def test_multiple_descriptions(self, mock_load_preprocessors, mock_load_model, mock_load_thresholds, mock_model_and_preprocessors):
         """Predict_genres handles multiple descriptions."""
         mock_model, preprocessors = mock_model_and_preprocessors
         mock_model.decision_function.return_value = np.array([
@@ -95,6 +104,7 @@ class TestPredictGenresTopK:
         ]
         mock_load_model.return_value = mock_model
         mock_load_preprocessors.return_value = preprocessors
+        mock_load_thresholds.return_value = None
         
         with patch('descriptions.modeling.predict.MODELS_DIR') as mock_models_dir:
             mock_models_dir.glob.return_value = [Mock(name='linearsvc.joblib')]
