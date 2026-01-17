@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import pandas as pd
 from loguru import logger
 
 from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
@@ -78,6 +77,161 @@ class PredictionService:
             self._is_loaded = False
             raise
     
+    def _preprocess_descriptions(self, descriptions: List[str]) -> np.ndarray:
+        """
+        Preprocess descriptions through the full pipeline.
+        
+        Args:
+            descriptions: List of movie descriptions
+        
+        Returns:
+            Dense array of preprocessed features ready for model prediction
+        """
+        # Transform descriptions to TF-IDF features
+        X = self.vectorizer.transform(descriptions)
+        
+        # Apply L2 normalization
+        X = self.normalizer.transform(X)
+        
+        # Apply feature selection
+        X = self.feature_selector.transform(X)
+        
+        # Convert to dense array for LinearSVC (handle both sparse and dense)
+        if hasattr(X, 'toarray'):
+            return X.toarray()
+        return X
+    
+    def _get_prediction_probabilities(self, X_dense: np.ndarray) -> np.ndarray:
+        """
+        Get prediction probabilities from model.
+        
+        Args:
+            X_dense: Dense array of preprocessed features
+        
+        Returns:
+            Array of prediction probabilities (n_samples, n_classes)
+        """
+        from scipy.special import expit
+        
+        # Get prediction scores
+        y_scores = self.model.decision_function(X_dense)
+        
+        # Convert scores to probabilities using sigmoid function
+        return expit(y_scores)
+    
+    def _determine_thresholds(
+        self,
+        threshold: Optional[Union[float, Dict[str, float]]],
+        use_global_threshold: bool
+    ) -> Tuple[Optional[Dict[str, float]], float]:
+        """
+        Determine which thresholds to use for predictions.
+        
+        Args:
+            threshold: Threshold value or dict of per-label thresholds
+            use_global_threshold: Force use of global threshold
+        
+        Returns:
+            Tuple of (per_label_thresholds, global_threshold)
+        """
+        per_label_thresholds: Optional[Dict[str, float]] = None
+        global_threshold = 0.55
+        
+        if use_global_threshold:
+            # Force use of global threshold
+            if threshold is None or isinstance(threshold, dict):
+                global_threshold = 0.55
+            else:
+                global_threshold = threshold
+            logger.debug(f"Using global threshold: {global_threshold}")
+        elif isinstance(threshold, dict):
+            # Explicit per-label thresholds provided
+            per_label_thresholds = threshold
+            logger.debug(f"Using provided per-label thresholds for {len(per_label_thresholds)} labels")
+        elif threshold is not None:
+            # Explicit global threshold provided
+            global_threshold = threshold
+            logger.debug(f"Using global threshold: {global_threshold}")
+        else:
+            # Try to load per-label thresholds by default
+            per_label_thresholds = load_per_label_thresholds()
+            if per_label_thresholds:
+                logger.debug(f"Using per-label thresholds for {len(per_label_thresholds)} labels")
+            else:
+                global_threshold = 0.55
+                logger.debug(f"Per-label thresholds not found, using global threshold: {global_threshold}")
+        
+        return per_label_thresholds, global_threshold
+    
+    def _apply_thresholds(
+        self,
+        y_proba: np.ndarray,
+        per_label_thresholds: Optional[Dict[str, float]],
+        global_threshold: float
+    ) -> np.ndarray:
+        """
+        Apply thresholds to probability predictions.
+        
+        Args:
+            y_proba: Probability predictions (n_samples, n_classes)
+            per_label_thresholds: Per-label thresholds dict or None
+            global_threshold: Global threshold value
+        
+        Returns:
+            Binary predictions array (n_samples, n_classes)
+        """
+        y_pred_binary = np.zeros_like(y_proba, dtype=int)
+        
+        if per_label_thresholds:
+            # Use per-label thresholds
+            for label_idx, label_name in enumerate(self.mlb.classes_):
+                if label_name in per_label_thresholds:
+                    label_threshold = per_label_thresholds[label_name]
+                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(int)
+                else:
+                    logger.debug(
+                        f"Threshold not found for label '{label_name}', using global threshold {global_threshold}"
+                    )
+                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= global_threshold).astype(int)
+        else:
+            # Use global threshold
+            y_pred_binary = (y_proba >= global_threshold).astype(int)
+        
+        return y_pred_binary
+    
+    def _apply_top_k_selection(
+        self,
+        y_proba: np.ndarray,
+        y_pred_binary: np.ndarray,
+        top_k: int
+    ) -> np.ndarray:
+        """
+        Apply top-k selection to binary predictions.
+        
+        Args:
+            y_proba: Probability predictions (n_samples, n_classes)
+            y_pred_binary: Binary predictions (n_samples, n_classes)
+            top_k: Maximum number of genres to select
+        
+        Returns:
+            Binary predictions with top-k selection applied
+        """
+        for i in range(y_proba.shape[0]):
+            # Get indices of genres that passed threshold
+            passed_indices = np.where(y_pred_binary[i] == 1)[0]
+            
+            if len(passed_indices) > top_k:
+                # Select top-k by probability from those that passed
+                passed_proba = y_proba[i, passed_indices]
+                top_k_passed_indices = passed_indices[np.argsort(passed_proba)[-top_k:][::-1]]
+                
+                # Reset all predictions for this sample
+                y_pred_binary[i, :] = 0
+                # Set only the top-k
+                y_pred_binary[i, top_k_passed_indices] = 1
+        
+        return y_pred_binary
+    
     def predict(
         self,
         descriptions: List[str],
@@ -105,8 +259,6 @@ class PredictionService:
         Returns:
             List of lists of predicted genres
         """
-        from scipy.special import expit
-        
         # Load model if not loaded or if different model requested
         if not self._is_loaded or (model_path and model_path != self.model_path):
             self.load_model(model_path)
@@ -114,88 +266,20 @@ class PredictionService:
         if not self._is_loaded:
             raise RuntimeError("Model not loaded. Cannot make predictions.")
         
-        # Transform descriptions to TF-IDF features
-        X = self.vectorizer.transform(descriptions)
+        # Preprocess descriptions
+        X_dense = self._preprocess_descriptions(descriptions)
         
-        # Apply L2 normalization
-        X = self.normalizer.transform(X)
+        # Get prediction probabilities
+        y_proba = self._get_prediction_probabilities(X_dense)
         
-        # Apply feature selection
-        X = self.feature_selector.transform(X)
+        # Determine thresholds
+        per_label_thresholds, global_threshold = self._determine_thresholds(threshold, use_global_threshold)
         
-        # Convert to dense array for LinearSVC (handle both sparse and dense)
-        if hasattr(X, 'toarray'):
-            X_dense = X.toarray()
-        else:
-            X_dense = X
-        
-        # Get prediction scores
-        y_scores = self.model.decision_function(X_dense)
-        
-        # Convert scores to probabilities using sigmoid function
-        y_proba = expit(y_scores)
-        
-        # Determine which thresholds to use
-        per_label_thresholds: Optional[Dict[str, float]] = None
-        global_threshold = 0.55
-
-        if use_global_threshold:
-            # Force use of global threshold
-            if threshold is None or isinstance(threshold, dict):
-                global_threshold = 0.55
-                logger.debug(f"Using global threshold: {global_threshold}")
-            else:
-                global_threshold = threshold
-                logger.debug(f"Using global threshold: {global_threshold}")
-        elif isinstance(threshold, dict):
-            # Explicit per-label thresholds provided
-            per_label_thresholds = threshold
-            logger.debug(f"Using provided per-label thresholds for {len(per_label_thresholds)} labels")
-        elif threshold is not None:
-            # Explicit global threshold provided
-            global_threshold = threshold
-            logger.debug(f"Using global threshold: {global_threshold}")
-        else:
-            # Try to load per-label thresholds by default
-            per_label_thresholds = load_per_label_thresholds()
-            if per_label_thresholds:
-                logger.debug(f"Using per-label thresholds for {len(per_label_thresholds)} labels")
-            else:
-                global_threshold = 0.55
-                logger.debug(f"Per-label thresholds not found, using global threshold: {global_threshold}")
-
         # Apply thresholds
-        y_pred_binary = np.zeros_like(y_proba, dtype=int)
-
-        if per_label_thresholds:
-            # Use per-label thresholds
-            for label_idx, label_name in enumerate(self.mlb.classes_):
-                if label_name in per_label_thresholds:
-                    label_threshold = per_label_thresholds[label_name]
-                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(int)
-                else:
-                    logger.debug(
-                        f"Threshold not found for label '{label_name}', using global threshold {global_threshold}"
-                    )
-                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= global_threshold).astype(int)
-        else:
-            # Use global threshold
-            y_pred_binary = (y_proba >= global_threshold).astype(int)
-
-        # Apply top-k selection: for each sample, select top-k from genres that passed threshold
-        for i in range(y_proba.shape[0]):
-            # Get indices of genres that passed threshold
-            passed_indices = np.where(y_pred_binary[i] == 1)[0]
-            
-            if len(passed_indices) > top_k:
-                # Select top-k by probability from those that passed
-                passed_proba = y_proba[i, passed_indices]
-                top_k_passed_indices = passed_indices[np.argsort(passed_proba)[-top_k:][::-1]]
-                
-                # Reset all predictions for this sample
-                y_pred_binary[i, :] = 0
-                # Set only the top-k
-                y_pred_binary[i, top_k_passed_indices] = 1
+        y_pred_binary = self._apply_thresholds(y_proba, per_label_thresholds, global_threshold)
+        
+        # Apply top-k selection
+        y_pred_binary = self._apply_top_k_selection(y_proba, y_pred_binary, top_k)
         
         # Decode predictions back to genre labels
         predicted_genres = self.mlb.inverse_transform(y_pred_binary)
@@ -231,8 +315,6 @@ class PredictionService:
             - predicted genres: List of lists of predicted genre names
             - confidence scores: List of dicts mapping genre name to confidence score
         """
-        from scipy.special import expit
-        
         # Load model if not loaded or if different model requested
         if not self._is_loaded or (model_path and model_path != self.model_path):
             self.load_model(model_path)
@@ -240,71 +322,20 @@ class PredictionService:
         if not self._is_loaded:
             raise RuntimeError("Model not loaded. Cannot make predictions.")
         
-        # Transform descriptions to TF-IDF features
-        X = self.vectorizer.transform(descriptions)
+        # Preprocess descriptions
+        X_dense = self._preprocess_descriptions(descriptions)
         
-        # Apply L2 normalization
-        X = self.normalizer.transform(X)
+        # Get prediction probabilities
+        y_proba = self._get_prediction_probabilities(X_dense)
         
-        # Apply feature selection
-        X = self.feature_selector.transform(X)
+        # Determine thresholds
+        per_label_thresholds, global_threshold = self._determine_thresholds(threshold, use_global_threshold)
         
-        # Convert to dense array for LinearSVC (handle both sparse and dense)
-        if hasattr(X, 'toarray'):
-            X_dense = X.toarray()
-        else:
-            X_dense = X
-        
-        # Get prediction scores
-        y_scores = self.model.decision_function(X_dense)
-        
-        # Convert scores to probabilities using sigmoid function
-        y_proba = expit(y_scores)
-        
-        # Determine which thresholds to use
-        per_label_thresholds: Optional[Dict[str, float]] = None
-        global_threshold = 0.55
-
-        if use_global_threshold:
-            global_threshold = 0.55 if threshold is None or isinstance(threshold, dict) else threshold
-            logger.debug(f"Using global threshold: {global_threshold}")
-        elif isinstance(threshold, dict):
-            per_label_thresholds = threshold
-            logger.debug(f"Using provided per-label thresholds for {len(per_label_thresholds)} labels")
-        elif threshold is not None:
-            global_threshold = threshold
-            logger.debug(f"Using global threshold: {global_threshold}")
-        else:
-            per_label_thresholds = load_per_label_thresholds()
-            if per_label_thresholds:
-                logger.debug(f"Using per-label thresholds for {len(per_label_thresholds)} labels")
-            else:
-                global_threshold = 0.55
-                logger.debug(f"Per-label thresholds not found, using global threshold: {global_threshold}")
-
         # Apply thresholds
-        y_pred_binary = np.zeros_like(y_proba, dtype=int)
-
-        if per_label_thresholds:
-            for label_idx, label_name in enumerate(self.mlb.classes_):
-                if label_name in per_label_thresholds:
-                    label_threshold = per_label_thresholds[label_name]
-                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= label_threshold).astype(int)
-                else:
-                    y_pred_binary[:, label_idx] = (y_proba[:, label_idx] >= global_threshold).astype(int)
-        else:
-            y_pred_binary = (y_proba >= global_threshold).astype(int)
-
+        y_pred_binary = self._apply_thresholds(y_proba, per_label_thresholds, global_threshold)
+        
         # Apply top-k selection
-        for i in range(y_proba.shape[0]):
-            passed_indices = np.where(y_pred_binary[i] == 1)[0]
-            
-            if len(passed_indices) > top_k:
-                passed_proba = y_proba[i, passed_indices]
-                top_k_passed_indices = passed_indices[np.argsort(passed_proba)[-top_k:][::-1]]
-                
-                y_pred_binary[i, :] = 0
-                y_pred_binary[i, top_k_passed_indices] = 1
+        y_pred_binary = self._apply_top_k_selection(y_proba, y_pred_binary, top_k)
         
         # Decode predictions back to genre labels
         predicted_genres = self.mlb.inverse_transform(y_pred_binary)
