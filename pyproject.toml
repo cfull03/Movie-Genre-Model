@@ -39,13 +39,13 @@ dependencies = [
 
 [tool.ruff]
 line-length = 99
-src = ["descriptions"]
-include = ["pyproject.toml", "descriptions/**/*.py"]
+src = ["descriptions", "app"]
+include = ["pyproject.toml", "descriptions/**/*.py", "app/**/*.py"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # Add import sorting
 
 [tool.ruff.lint.isort]
-known-first-party = ["descriptions"]
+known-first-party = ["descriptions", "app"]
 force-sort-within-sections = true
 
