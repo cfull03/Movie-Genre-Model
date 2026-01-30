@@ -16,7 +16,9 @@ from descriptions.dataset import load_interim, load_processed
 from descriptions.modeling.mlflow_utils import (
     calculate_file_hash,
     log_data_info,
+    log_dataset,
     log_metrics_dict,
+    set_run_context_tags,
     setup_experiment,
 )
 from descriptions.modeling.model import get_model_name, load_model
@@ -324,6 +326,8 @@ def main(
         mlflow.start_run(run_name="evaluation")
         logger.info("✓ Started new MLflow run for evaluation")
 
+    set_run_context_tags(source="evaluation")
+
     try:
         # Convert string to Path if provided
         model_path_obj: Optional[Path] = None
@@ -427,7 +431,7 @@ def main(
             f"✓ Data prepared: {X.shape[0]} samples, {X.shape[1]} features, {y.shape[1]} labels"
         )
 
-        # Log data info to MLflow using utility function
+        # Log data info and evaluation dataset to MLflow
         if mlflow.active_run():
             if data_path.exists():
                 data_hash = calculate_file_hash(data_path)
@@ -438,7 +442,13 @@ def main(
             mlflow.log_param("evaluation_samples", len(data))
             mlflow.log_param("n_features", X.shape[1])
             mlflow.log_param("n_classes", y.shape[1])
-            logger.debug("Data information logged to MLflow")
+            log_dataset(
+                data,
+                context="evaluation",
+                source=str(data_path),
+                name="eval",
+            )
+            logger.debug("Data information and dataset logged to MLflow")
 
         logger.info("=" * 70)
         logger.info("Evaluating model performance")
