@@ -3,8 +3,11 @@ from typing import Any, Dict, Optional, Union
 
 import joblib
 from loguru import logger
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import Normalizer
 from sklearn.svm import LinearSVC
 
 from descriptions.config import MODELS_DIR
@@ -166,63 +169,80 @@ def build_model(
 
 
 def build_pipeline(
-    use_fitted_preprocessor: bool = False,
-    vectorizer_path: Optional[Path] = None,
-    mlb_path: Optional[Path] = None,
     model_params: Optional[dict] = None,
+    k_features: int = 4500,
+    vectorizer_params: Optional[dict] = None,
 ) -> Pipeline:
     """
-    Build the complete pipeline (preprocessor + model) for movie genre classification.
+    Build the complete prediction pipeline for movie genre classification.
 
     The pipeline consists of:
     1. TfidfVectorizer: Transforms text descriptions into TF-IDF features
-    2. OneVsRestClassifier: Multi-label classifier for genre prediction
+    2. Normalizer: Applies L2 normalization to feature vectors
+    3. SelectKBest: Feature selection using chi2 test
+    4. OneVsRestClassifier: Multi-label classifier for genre prediction
 
-    Note: The MultiLabelBinarizer (mlb) is not included in the pipeline as it's used
+    Note: The MultiLabelBinarizer (mlb) is NOT included in the pipeline as it's used
     separately for encoding/decoding target labels. It should be loaded separately
     when needed for transforming labels.
 
     Args:
-        use_fitted_preprocessor: If True, load pre-fitted TfidfVectorizer.
-            If False, create a new unfitted one that will be fitted during training.
-        vectorizer_path: Path to saved TfidfVectorizer (only used if use_fitted_preprocessor=True).
-            If None, uses default path from MODELS_DIR.
-        mlb_path: Path to saved MultiLabelBinarizer (only used if use_fitted_preprocessor=True).
-            If None, uses default path from MODELS_DIR. Note: mlb is loaded but not used in pipeline.
         model_params: Optional dictionary of parameters to pass to build_model().
             Keys can include: 'C', 'penalty', 'loss', 'max_iter', 'tol', 'class_weight', 'dual', 'random_state'.
+        k_features: Number of features to select with SelectKBest (default: 4500)
+        vectorizer_params: Optional dictionary of parameters for TfidfVectorizer.
+            If None, uses default parameters from preprocess.build_preprocessor().
 
     Returns:
-        Pipeline object with 'vectorizer' and 'model' steps.
+        Pipeline object with all preprocessing and model steps.
 
     Example:
-        >>> # For training (unfitted preprocessor)
-        >>> pipeline = build_pipeline(use_fitted_preprocessor=False)
-        >>> pipeline.fit(X_train, y_train)
+        >>> # For training
+        >>> pipeline = build_pipeline(model_params={'C': 0.1}, k_features=4500)
+        >>> pipeline.fit(X_train_text, y_train_binary)
 
-        >>> # For inference (fitted preprocessor)
-        >>> pipeline = build_pipeline(use_fitted_preprocessor=True)
-        >>> predictions = pipeline.predict(X_test)
+        >>> # For inference
+        >>> pipeline = load_model("genre_pipeline")
+        >>> y_scores = pipeline.decision_function(X_test_text)
     """
-    # Import here to avoid circular import with preprocess.py
-    from .preprocess import build_preprocessor, load_preprocessors
+    # Build vectorizer with default or custom parameters
+    if vectorizer_params is None:
+        vectorizer_params = {
+            "max_features": 10000,
+            "stop_words": "english",
+            "ngram_range": (1, 3),
+            "sublinear_tf": True,
+            "max_df": 0.7,
+            "min_df": 3,
+            "use_idf": True,
+        }
+    
+    vectorizer = TfidfVectorizer(**vectorizer_params)
+    logger.debug(f"TfidfVectorizer configured: {vectorizer_params}")
 
-    if use_fitted_preprocessor:
-        vectorizer, mlb, _ = load_preprocessors(vectorizer_path, mlb_path)
-        # Note: mlb is loaded but not used in pipeline - it's for label encoding/decoding
-        logger.debug("Loaded fitted preprocessors (mlb loaded but not used in pipeline)")
-    else:
-        vectorizer, _, _ = build_preprocessor()
-        logger.debug("Created new unfitted preprocessor")
+    # Build normalizer
+    normalizer = Normalizer(norm="l2")
+    logger.debug("Normalizer configured: L2 norm")
+
+    # Build feature selector
+    feature_selector = SelectKBest(score_func=chi2, k=k_features)
+    logger.debug(f"SelectKBest configured: chi2 test, k={k_features} features")
 
     # Build model with optional parameters
     if model_params is None:
         model_params = {}
     model = build_model(**model_params)
+    logger.debug(f"Model built with parameters: {model_params}")
 
-    pipeline = Pipeline([("vectorizer", vectorizer), ("model", model)])
+    # Create pipeline with all steps
+    pipeline = Pipeline([
+        ("tfidf", vectorizer),
+        ("normalizer", normalizer),
+        ("feature_selector", feature_selector),
+        ("classifier", model),
+    ])
 
-    logger.info("Pipeline built successfully with vectorizer and model steps")
+    logger.info("Pipeline built successfully with tfidf, normalizer, feature_selector, and classifier steps")
     return pipeline
 
 
