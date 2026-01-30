@@ -19,11 +19,13 @@ requirements:
 
 
 
-## Delete all compiled Python files
+## Delete compiled Python files and pretrained models (for fresh training)
 .PHONY: clean
 clean:
 	find . -type f -name "*.py[co]" -delete
 	find . -type d -name "__pycache__" -delete
+	@rm -f models/*.joblib models/*.json 2>/dev/null || true
+	@echo ">>> Removed pretrained models (models/*.joblib, models/*.json)"
 
 ## Clean generated files (models, processed data, reports, mlruns)
 ## WARNING: This deletes generated artifacts. Use with caution!
@@ -115,6 +117,13 @@ else
 	$(PYTHON_INTERPRETER) descriptions/modeling/evaluate.py
 endif
 
+
+## Open MLflow UI (view runs, metrics, artifacts). Default port 5001 to avoid conflict with 5000.
+## Usage: make mlflow-ui  or  make mlflow-ui PORT=5002
+.PHONY: mlflow-ui
+mlflow-ui:
+	@echo ">>> MLflow UI: http://127.0.0.1:$(or $(PORT),5001)"
+	mlflow ui --backend-store-uri ./mlruns --port $(or $(PORT),5001)
 
 .PHONY: plots
 plots:
