@@ -68,7 +68,7 @@ def _generate_targets(
     data: pd.DataFrame,
     mlb: Optional[MultiLabelBinarizer] = None,
     min_genre_percentage: float = 5.0,
-) -> Tuple[np.ndarray, MultiLabelBinarizer, pd.Series]:
+) -> Tuple[np.ndarray, MultiLabelBinarizer, pd.DataFrame]:
     """
     Generate multi-label targets from the genre column, filtering out rare genres.
 
@@ -78,7 +78,7 @@ def _generate_targets(
         min_genre_percentage: Minimum percentage of samples a genre must appear in to be kept (default: 5.0)
 
     Returns:
-        Tuple of (binary label array, MultiLabelBinarizer, filtered data index)
+        Tuple of (binary label array, MultiLabelBinarizer, filtered DataFrame with same row order as y)
     """
     logger.info(f"Generating multi-label targets from {len(data)} samples...")
 
@@ -149,7 +149,7 @@ def _generate_targets(
         )
 
     logger.success(f"Targets generated: shape {y.shape} (samples × labels)")
-    return y, mlb, data.index
+    return y, mlb, data
 
 
 def _generate_descriptions(
@@ -386,21 +386,16 @@ def main(
     logger.info("=" * 70)
     logger.info("Step 1/5: Generating TF-IDF features from descriptions")
     logger.info("=" * 70)
-    X, vect = _generate_descriptions(data)
-    logger.success(f"TF-IDF features generated: {X.shape[0]} samples × {X.shape[1]} features")
+    logger.info("Step 1/5: Generating multi-label genre targets (filter data)")
+    logger.info("=" * 70)
+    y, mlb, data = _generate_targets(data)
+    logger.success(f"Genre targets generated: {y.shape[0]} samples × {y.shape[1]} labels")
 
     logger.info("=" * 70)
-    logger.info("Step 2/5: Generating multi-label genre targets")
+    logger.info("Step 2/5: Generating TF-IDF features from filtered data")
     logger.info("=" * 70)
-    y, mlb, filtered_index = _generate_targets(data)
-    # Filter X to match filtered data
-    if len(filtered_index) < len(data):
-        logger.debug(f"Filtering features to match filtered data: {len(filtered_index)} samples")
-        index_map = {idx: i for i, idx in enumerate(data.index)}
-        filtered_positions = [index_map[idx] for idx in filtered_index]
-        X = X[filtered_positions]
-        data = data.loc[filtered_index]
-    logger.success(f"Genre targets generated: {y.shape[0]} samples × {y.shape[1]} labels")
+    X, vect = _generate_descriptions(data)
+    logger.success(f"TF-IDF features generated: {X.shape[0]} samples × {X.shape[1]} features")
 
     logger.info("=" * 70)
     logger.info("Step 3/5: Applying L2 normalization")
