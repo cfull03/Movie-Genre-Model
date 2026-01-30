@@ -19,14 +19,19 @@ from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim
 from descriptions.modeling.mlflow_utils import (
     calculate_file_hash,
+    enable_sklearn_autolog,
     log_data_info,
+    log_dataset,
     log_environment_info,
     log_git_info,
+    log_pipeline_model,
     log_preprocessors_as_artifacts,
     log_training_summary,
+    register_model,
+    set_run_context_tags,
     setup_experiment,
 )
-from descriptions.modeling.model import build_model, get_model_name, save_model
+from descriptions.modeling.model import build_model, build_pipeline, get_model_name, save_model
 from descriptions.modeling.preprocess import (
     _generate_descriptions,
     _generate_targets,
@@ -138,19 +143,11 @@ def prepare_features_and_labels(
     Returns:
         Tuple of (features_df, labels_array, vectorizer, mlb, normalizer, feature_selector)
     """
-    logger.info("Generating TF-IDF features from descriptions...")
-    X_sparse, vectorizer = _generate_descriptions(data, vectorizer=vectorizer)
-
     logger.info("Generating multi-label genre targets...")
-    y, mlb, filtered_index = _generate_targets(data, mlb=mlb)
+    y, mlb, data_filtered = _generate_targets(data, mlb=mlb)
 
-    # Filter X_sparse to match filtered data
-    if len(filtered_index) < len(data):
-        logger.debug(f"Filtering features to match filtered data: {len(filtered_index)} samples")
-        # Get the positions of filtered indices in original data
-        index_map = {idx: i for i, idx in enumerate(data.index)}
-        filtered_positions = [index_map[idx] for idx in filtered_index]
-        X_sparse = X_sparse[filtered_positions]
+    logger.info("Generating TF-IDF features from descriptions...")
+    X_sparse, vectorizer = _generate_descriptions(data_filtered, vectorizer=vectorizer)
 
     # Apply L2 normalization
     if normalizer is None:
@@ -181,7 +178,7 @@ def prepare_features_and_labels(
     logger.debug("Converting sparse TF-IDF matrix to dense DataFrame...")
     X_df = pd.DataFrame(
         X_sparse.toarray(),
-        index=filtered_index,
+        index=data_filtered.index,
         columns=[f"tfidf_{i}" for i in range(X_sparse.shape[1])],
     )
 
@@ -315,6 +312,21 @@ def main(
     k_features: int = typer.Option(
         4500, "--k-features", help="Number of features to select with SelectKBest"
     ),
+    register_to_registry: bool = typer.Option(
+        False,
+        "--register-model",
+        help="Register the trained model in MLflow Model Registry.",
+    ),
+    registered_model_name: Optional[str] = typer.Option(
+        None,
+        "--registered-model-name",
+        help="Name for the registered model (default: movie-genre-classifier).",
+    ),
+    model_stage: str = typer.Option(
+        "None",
+        "--model-stage",
+        help="Stage to assign when registering (None, Staging, Production, Archived).",
+    ),
 ) -> None:
     """
     Train a movie genre classification model.
@@ -339,12 +351,16 @@ def main(
         class_weight: Class weight strategy - 'balanced' or None (default: 'balanced')
         dual: Whether to solve dual or primal optimization problem (default: False)
         k_features: Number of features to select with SelectKBest (default: 4500)
+        register_to_registry: If True, register the model in MLflow Model Registry
+        registered_model_name: Name for the registered model (default: movie-genre-classifier)
+        model_stage: Stage when registering (None, Staging, Production, Archived)
     """
     # Set up MLflow experiment
     logger.info("=" * 70)
     logger.info("Setting up MLflow experiment tracking")
     logger.info("=" * 70)
     setup_experiment(experiment_name, create_if_not_exists=True)
+    enable_sklearn_autolog(log_models=False, log_datasets=True)
 
     # Generate run name from hyperparameters if not provided
     if run_name is None:
@@ -354,6 +370,7 @@ def main(
     # Start MLflow run - each unique parameter combination creates a new run
     with mlflow.start_run(run_name=run_name):
         try:
+            set_run_context_tags(source="training")
             # Log git and environment info
             logger.info("Logging git and environment information...")
             log_git_info()
@@ -434,45 +451,93 @@ def main(
             logger.success(
                 f"✓ Data split complete: {len(data_train)} training samples, {len(data_test)} test samples"
             )
+            log_dataset(
+                data_train,
+                context="training",
+                source=str(interim_path),
+                name="train",
+            )
+            log_dataset(
+                data_test,
+                context="validation",
+                source=str(interim_path),
+                name="validation",
+            )
 
-            # Fit TF-IDF and MLB on TRAINING data only
+            # Fit MLB on TRAINING data only (for label encoding/decoding)
             logger.info("=" * 70)
-            logger.info("Fitting preprocessors on training data")
+            logger.info("Fitting MultiLabelBinarizer on training data")
             logger.info("=" * 70)
-            logger.info("Generating TF-IDF features and labels from training data...")
-            X_train, y_train, vectorizer, mlb, normalizer, feature_selector = (
-                prepare_features_and_labels(
-                    data_train,
-                    vectorizer=None,
-                    mlb=None,
-                    normalizer=None,
-                    feature_selector=None,
-                    k_features=k_features,
+            # Use _generate_targets to get mlb and filtered data (same row order as y_train)
+            from descriptions.modeling.preprocess import _generate_targets
+            y_train, mlb, data_train_filtered = _generate_targets(data_train, mlb=None)
+            X_train_text = data_train_filtered["description"].fillna("").astype(str).tolist()
+            logger.success(
+                f"✓ MultiLabelBinarizer fitted: {y_train.shape[1]} labels, {len(X_train_text)} training samples"
+            )
+
+            # Build pipeline with all preprocessing steps + model
+            logger.info("=" * 70)
+            logger.info("Building prediction pipeline")
+            logger.info("=" * 70)
+            logger.info(
+                f"Building pipeline with hyperparameters: "
+                f"C={C}, penalty={penalty}, loss={loss}, k_features={k_features}"
+            )
+            pipeline = build_pipeline(
+                model_params=model_params_dict,
+                k_features=k_features,
+            )
+            logger.success("✓ Pipeline built successfully")
+
+            # Fit pipeline on training data (text descriptions → binary labels)
+            logger.info("=" * 70)
+            logger.info("Training pipeline on training data")
+            logger.info("=" * 70)
+            logger.info("Fitting pipeline: TF-IDF → Normalizer → Feature Selection → Classifier...")
+            pipeline.fit(X_train_text, y_train)
+            logger.success("✓ Pipeline training completed successfully!")
+
+            # Prepare test data for evaluation
+            logger.info("=" * 70)
+            logger.info("Preparing test data for evaluation")
+            logger.info("=" * 70)
+            X_test_text = data_test["description"].fillna("").astype(str).tolist()
+            # Use mlb to transform test labels
+            from descriptions.modeling.preprocess import _generate_targets
+            y_test, _, _ = _generate_targets(data_test, mlb=mlb)
+            logger.success(
+                f"✓ Test data prepared: {len(X_test_text)} samples, {y_test.shape[1]} labels"
+            )
+
+            # Extract transformed features for metrics calculation (for backward compatibility)
+            X_train_transformed = pipeline.named_steps['feature_selector'].transform(
+                pipeline.named_steps['normalizer'].transform(
+                    pipeline.named_steps['tfidf'].transform(X_train_text)
                 )
             )
-            logger.success(
-                f"✓ Preprocessors fitted on training data: {X_train.shape[1]} features, {y_train.shape[1]} labels"
-            )
+            if hasattr(X_train_transformed, 'toarray'):
+                X_train_transformed = X_train_transformed.toarray()
 
-            # Transform test data using fitted preprocessors
+            # Save pipeline and mlb separately
             logger.info("=" * 70)
-            logger.info("Transforming test data using fitted preprocessors")
+            logger.info("Saving trained pipeline and label encoder")
             logger.info("=" * 70)
-            X_test, y_test, _, _, _, _ = prepare_features_and_labels(
-                data_test,
-                vectorizer=vectorizer,
-                mlb=mlb,
-                normalizer=normalizer,
-                feature_selector=feature_selector,
-            )
-            logger.success(
-                f"✓ Test data transformed: {X_test.shape[0]} samples, {X_test.shape[1]} features, {y_test.shape[1]} labels"
-            )
+            save_model(pipeline, final_model_path)
+            logger.success(f"✓ Pipeline saved to {final_model_path}")
+            
+            # Save mlb separately (for label encoding/decoding)
+            from descriptions.modeling.preprocess import save_preprocessors
+            # Save only mlb (vectorizer, normalizer, feature_selector are in pipeline)
+            save_model(mlb, "genre_binarizer")
+            logger.success("✓ MultiLabelBinarizer saved (for label encoding/decoding)")
 
-            # Save preprocessors for later use (e.g., prediction)
-            logger.info("Saving fitted preprocessors...")
+            # For backward compatibility, also save individual components
+            vectorizer = pipeline.named_steps['tfidf']
+            normalizer = pipeline.named_steps['normalizer']
+            feature_selector = pipeline.named_steps['feature_selector']
             save_preprocessors(vectorizer, mlb, normalizer, feature_selector)
-            logger.success("✓ Preprocessors saved (including feature selector)")
+            logger.success("✓ Individual preprocessors saved (for backward compatibility)")
 
             # Log preprocessors as MLflow artifacts (improved tracking)
             logger.info("Logging preprocessors as MLflow artifacts...")
@@ -481,23 +546,12 @@ def main(
             )
             mlflow.log_param("preprocessing_feature_selector_score_func", "chi2")
 
-            # Train model
-            logger.info("=" * 70)
-            logger.info("Training multi-label classification model")
-            logger.info("=" * 70)
-            logger.info(
-                f"Training LinearSVC model with hyperparameters: "
-                f"C={C}, penalty={penalty}, loss={loss}, "
-                f"max_iter={max_iter}, tol={tol}, class_weight={class_weight}, dual={dual}"
-            )
-            model = train_model(X_train, y_train, model_params=model_params_dict)
-            logger.success("✓ Model training completed successfully!")
-
-            # Calculate training metrics
+            # Calculate training metrics using pipeline
             logger.info("Calculating training metrics...")
+
             try:
-                X_train_array = X_train.values if isinstance(X_train, pd.DataFrame) else X_train
-                y_train_scores = model.decision_function(X_train_array)
+                model = pipeline.named_steps['classifier']
+                y_train_scores = model.decision_function(X_train_transformed)
                 y_train_proba = expit(y_train_scores)
                 y_train_pred = (y_train_proba >= 0.55).astype(int)
 
@@ -523,21 +577,17 @@ def main(
             logger.debug("Logging training summary to MLflow...")
             log_training_summary(
                 model_name=model_name,
-                train_size=len(X_train),
-                test_size=len(X_test),
-                n_features=X_train.shape[1],
+                train_size=len(X_train_text),
+                test_size=len(X_test_text),
+                n_features=X_train_transformed.shape[1],
                 n_classes=len(mlb.classes_),
                 metrics=train_metrics,
             )
             mlflow.log_param("test_size_ratio", test_size)
             mlflow.log_param("random_state", random_state)
 
-            logger.info("=" * 70)
-            logger.info("Saving trained model")
-            logger.info("=" * 70)
-            logger.info(f"Saved trained model to {final_model_path}...")
-            save_model(model, final_model_path)
-            logger.success(f"✓ Model saved successfully to {final_model_path}")
+            # Model is already saved as part of pipeline above
+            # Just log to MLflow here
 
             logger.info("=" * 70)
             logger.info("Saving Parameters")
@@ -547,23 +597,25 @@ def main(
             save_parameters(model_params_dict, model_name)
             logger.success(f"✓ Parameters saved successfully to {params_file}")
 
-            # Save model to MLflow
-            logger.info("Logging model artifact to MLflow...")
-            mlflow.sklearn.log_model(model, "model")
+            # Save pipeline to MLflow with signature and input example
+            logger.info("Logging pipeline artifact to MLflow (with signature and input example)...")
+            log_pipeline_model(
+                pipeline,
+                artifact_path="model",
+                input_example=X_train_text[:5],
+                metadata={"model_type": "LinearSVC-OneVsRest", "task": "multi-label-classification"},
+            )
             run_id = mlflow.active_run().info.run_id
-            logger.success(f"✓ Model logged to MLflow run: {run_id}")
+            logger.success(f"✓ Pipeline logged to MLflow run: {run_id}")
 
-            # Optionally register model in Model Registry
-            # Uncomment and configure if you want to use Model Registry
-            # try:
-            #     register_model(
-            #         model_path="model",
-            #         model_name="movie-genre-classifier",
-            #         stage="None",
-            #         description=f"LinearSVC model trained with C={C}, penalty={penalty}, loss={loss}",
-            #     )
-            # except Exception as e:
-            #     logger.warning(f"Could not register model in registry: {e}")
+            if register_to_registry:
+                reg_name = registered_model_name or "movie-genre-classifier"
+                register_model(
+                    model_path="model",
+                    model_name=reg_name,
+                    stage=model_stage,
+                    description=f"LinearSVC C={C}, penalty={penalty}, loss={loss}, k_features={k_features}",
+                )
 
             logger.info("=" * 70)
             logger.success("🎉 Training pipeline completed successfully!")
