@@ -157,12 +157,18 @@ small {
 
 .genre-tag {
     padding: 10px 20px;
+    /* Fallback when no inline style (confidence) is applied */
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border-radius: 25px;
     font-weight: 600;
     font-size: 1em;
     box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+}
+
+.genre-tag small {
+    font-size: 0.8em;
+    opacity: 0.9;
 }
 
 .result-info {
