@@ -10,7 +10,6 @@ import typer
 from descriptions.config import MODELS_DIR
 from descriptions.modeling.evaluate import load_per_label_thresholds
 from descriptions.modeling.model import load_model
-from descriptions.modeling.preprocess import load_preprocessors
 from sklearn.pipeline import Pipeline
 
 app = typer.Typer()
@@ -49,15 +48,7 @@ def predict_genres(
         logger.debug("No model path provided, searching for default model...")
         model_files = list(MODELS_DIR.glob("*.joblib"))
         model_files = [
-            f
-            for f in model_files
-            if f.name
-            not in {
-                "tfidf_vectorizer.joblib",
-                "genre_binarizer.joblib",
-                "normalizer.joblib",
-                "feature_selector.joblib",
-            }
+            f for f in model_files if f.name != "genre_binarizer.joblib"
         ]
         if not model_files:
             raise FileNotFoundError(f"No model found in {MODELS_DIR}. Please train a model first.")
@@ -76,20 +67,16 @@ def predict_genres(
     loaded_model = load_model(model_path)
     logger.success(f"✓ Model/pipeline loaded successfully: {model_path.name}")
 
-    # Check if loaded model is a Pipeline or separate components
-    if isinstance(loaded_model, Pipeline):
-        # New Pipeline approach - all preprocessing is handled by pipeline
-        logger.info("Using Pipeline model (new approach)")
+    # Loaded model must be a Pipeline (tfidf → normalizer → feature_selector → classifier)
+    if isinstance(loaded_model, Pipeline) or (
+        hasattr(loaded_model, "named_steps")
+        and "classifier" in getattr(loaded_model, "named_steps", {})
+    ):
+        logger.info("Using Pipeline model")
         pipeline = loaded_model
-        # Load mlb separately (for label encoding/decoding)
         logger.info("Loading MultiLabelBinarizer for label encoding/decoding...")
-        try:
-            mlb = load_model("genre_binarizer")
-            logger.success("✓ MultiLabelBinarizer loaded successfully")
-        except FileNotFoundError:
-            # Fallback: try loading all preprocessors
-            _, mlb, _, _ = load_preprocessors()
-            logger.info("✓ MultiLabelBinarizer loaded from preprocessors")
+        mlb = load_model("genre_binarizer")
+        logger.success("✓ MultiLabelBinarizer loaded successfully")
         
         # Use pipeline to get decision scores (handles all preprocessing internally)
         logger.info(f"Transforming {len(descriptions)} descriptions using pipeline...")
@@ -108,36 +95,10 @@ def predict_genres(
         y_scores = model.decision_function(X_preprocessed)
         logger.debug(f"Decision scores generated: shape {y_scores.shape}")
     else:
-        # Backward compatibility: individual components
-        logger.info("Using individual model components (backward compatibility mode)")
-        model = loaded_model
-        logger.info(
-            "Loading preprocessors (TfidfVectorizer, MultiLabelBinarizer, Normalizer, and Feature Selector)..."
+        raise ValueError(
+            "Loaded model must be a Pipeline (tfidf → normalizer → feature_selector → classifier). "
+            "Please retrain the model to generate the correct format."
         )
-        vectorizer, mlb, normalizer, feature_selector = load_preprocessors()
-        logger.success("✓ Preprocessors loaded successfully")
-
-        # Transform descriptions to TF-IDF features
-        logger.info(f"Transforming {len(descriptions)} descriptions to TF-IDF features...")
-        X = vectorizer.transform(descriptions)
-        logger.debug(f"TF-IDF features generated: shape {X.shape}")
-
-        # Apply L2 normalization (same as training)
-        logger.info("Applying L2 normalization...")
-        X = normalizer.transform(X)
-        logger.debug(f"Features normalized: shape {X.shape}")
-
-        # Apply feature selection (same as training)
-        logger.info("Applying feature selection...")
-        X = feature_selector.transform(X)
-        logger.debug(f"Features after selection: shape {X.shape}")
-
-        # Get prediction probabilities
-        # LinearSVC doesn't have predict_proba, so we use decision_function
-        # and convert scores to probabilities using sigmoid function
-        logger.info("Generating prediction scores...")
-        y_scores = model.decision_function(X)
-        logger.debug(f"Decision scores generated: shape {y_scores.shape}")
 
     # Convert scores to probabilities using sigmoid function
     # sigmoid(x) = 1 / (1 + exp(-x))

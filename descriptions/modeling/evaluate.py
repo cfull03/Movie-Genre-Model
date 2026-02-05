@@ -22,18 +22,12 @@ from descriptions.modeling.mlflow_utils import (
     setup_experiment,
 )
 from descriptions.modeling.model import get_model_name, load_model
-from descriptions.modeling.preprocess import load_preprocessors
 from descriptions.modeling.train import prepare_features_and_labels, split_data
 
 app = typer.Typer()
 
-# Known preprocessor files that should be excluded from model search
-PREPROCESSOR_FILES = {
-    "tfidf_vectorizer.joblib",
-    "genre_binarizer.joblib",
-    "normalizer.joblib",
-    "feature_selector.joblib",
-}
+# genre_binarizer is saved separately for label encoding/decoding; exclude from model search
+PREPROCESSOR_FILES = {"genre_binarizer.joblib"}
 
 
 # ---- PRIVATE HELPER FUNCTIONS ----
@@ -41,7 +35,7 @@ def _find_model_files() -> List[Path]:
     """
     Find all scikit-learn model files in the models directory.
 
-    Excludes known preprocessor files (tfidf_vectorizer, genre_binarizer).
+    Excludes genre_binarizer.joblib (saved separately for label encoding).
 
     Returns:
         List of Path objects pointing to model files
@@ -208,9 +202,9 @@ def evaluate_model(
     if per_label_thresholds:
         # Use per-label thresholds
         if mlb is None:
-            # Try to load mlb from preprocessors
+            # Try to load mlb from saved genre_binarizer
             try:
-                _, mlb, _, _ = load_preprocessors()
+                mlb = load_model("genre_binarizer")
             except Exception as e:
                 logger.error(f"MultiLabelBinarizer required for per-label thresholds: {e}")
                 raise ValueError(
@@ -389,11 +383,12 @@ def main(
             logger.info(f"Loading interim data from {data_path}...")
             data = load_interim(data_path)
             logger.success(f"✓ Interim data loaded successfully: {len(data)} samples")
-            logger.info("Loading saved preprocessors...")
-            vectorizer, mlb, normalizer, feature_selector = load_preprocessors()
-            logger.success(
-                "✓ Preprocessors loaded successfully (including normalizer and feature selector)"
-            )
+            logger.info("Extracting preprocessors from pipeline and loading genre binarizer...")
+            vectorizer = model.named_steps["tfidf"]
+            normalizer = model.named_steps["normalizer"]
+            feature_selector = model.named_steps["feature_selector"]
+            mlb = load_model("genre_binarizer")
+            logger.success("✓ Preprocessors extracted from pipeline, genre binarizer loaded")
 
             # Prepare features and labels on ALL data first (matching notebook approach)
             # This filters the data consistently before splitting
@@ -478,7 +473,14 @@ def main(
                 )
 
         logger.info(f"Evaluating model on {len(X)} samples...")
-        metrics = evaluate_model(model, X, y, threshold=threshold_param, mlb=mlb)
+        # When model is a Pipeline (tfidf→normalizer→feature_selector→classifier) but X is
+        # already transformed features, pass only the classifier to avoid TfidfVectorizer
+        # receiving numeric arrays instead of raw text.
+        eval_model = model
+        if hasattr(model, "named_steps") and "classifier" in model.named_steps:
+            eval_model = model.named_steps["classifier"]
+            logger.debug("Using classifier step only (X is pre-transformed features)")
+        metrics = evaluate_model(eval_model, X, y, threshold=threshold_param, mlb=mlb)
         logger.success("✓ Model evaluation completed successfully")
 
         # Log metrics to MLflow using utility function

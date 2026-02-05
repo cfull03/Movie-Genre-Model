@@ -11,7 +11,6 @@ from descriptions.config import INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim
 from descriptions.modeling.evaluate import load_per_label_thresholds
 from descriptions.modeling.model import load_model
-from descriptions.modeling.preprocess import load_preprocessors
 from sklearn.pipeline import Pipeline
 
 
@@ -21,14 +20,11 @@ class PredictionService:
     def __init__(self):
         """Initialize the prediction service."""
         self.model = None
-        self.pipeline = None  # Pipeline (new approach)
+        self.pipeline = None
         self.model_path = None
-        self.vectorizer = None  # For backward compatibility
         self.mlb = None
-        self.normalizer = None  # For backward compatibility
-        self.feature_selector = None  # For backward compatibility
         self._is_loaded = False
-        self._use_pipeline = False  # Flag to track if using Pipeline
+        self._use_pipeline = False
     
     def load_model(self, model_path: Optional[str] = None) -> None:
         """
@@ -47,9 +43,7 @@ class PredictionService:
                 logger.debug("No model path provided, searching for default model...")
                 model_files = list(MODELS_DIR.glob("*.joblib"))
                 model_files = [
-                    f
-                    for f in model_files
-                    if f.name not in {"tfidf_vectorizer.joblib", "genre_binarizer.joblib", "normalizer.joblib", "feature_selector.joblib"}
+                    f for f in model_files if f.name != "genre_binarizer.joblib"
                 ]
                 if not model_files:
                     raise FileNotFoundError(f"No model found in {MODELS_DIR}. Please train a model first.")
@@ -67,34 +61,21 @@ class PredictionService:
             loaded_model = load_model(model_path)
             self.model_path = str(model_path)
             
-            # Check if loaded model is a Pipeline (new approach) or separate components (backward compatibility)
+            # Loaded model must be a Pipeline
             if isinstance(loaded_model, Pipeline):
-                logger.info("Using Pipeline model (new approach)")
+                logger.info("Using Pipeline model")
                 self.pipeline = loaded_model
-                self.model = loaded_model.named_steps['classifier']
+                self.model = loaded_model.named_steps["classifier"]
                 self._use_pipeline = True
                 logger.success(f"✓ Pipeline loaded successfully: {model_path.name}")
-                
-                # Load mlb separately (for label encoding/decoding)
+
                 logger.info("Loading MultiLabelBinarizer for label encoding/decoding...")
-                try:
-                    self.mlb = load_model("genre_binarizer")
-                    logger.success("✓ MultiLabelBinarizer loaded successfully")
-                except FileNotFoundError:
-                    # Fallback: try loading all preprocessors
-                    _, self.mlb, _, _ = load_preprocessors()
-                    logger.info("✓ MultiLabelBinarizer loaded from preprocessors")
+                self.mlb = load_model("genre_binarizer")
+                logger.success("✓ MultiLabelBinarizer loaded successfully")
             else:
-                # Backward compatibility: individual components
-                logger.info("Using individual model components (backward compatibility mode)")
-                self.model = loaded_model
-                self._use_pipeline = False
-                logger.success(f"✓ Model loaded successfully: {model_path.name}")
-                
-                # Load preprocessors
-                logger.info("Loading preprocessors...")
-                self.vectorizer, self.mlb, self.normalizer, self.feature_selector = load_preprocessors()
-                logger.success("✓ Preprocessors loaded successfully")
+                raise ValueError(
+                    "Loaded model must be a Pipeline. Please retrain the model."
+                )
             
             self._is_loaded = True
             
@@ -113,32 +94,15 @@ class PredictionService:
         Returns:
             Dense array of preprocessed features ready for model prediction
         """
-        if self._use_pipeline:
-            # Use Pipeline for preprocessing (new approach)
-            X_preprocessed = self.pipeline.named_steps['feature_selector'].transform(
-                self.pipeline.named_steps['normalizer'].transform(
-                    self.pipeline.named_steps['tfidf'].transform(descriptions)
-                )
+        # Use Pipeline for preprocessing
+        X_preprocessed = self.pipeline.named_steps["feature_selector"].transform(
+            self.pipeline.named_steps["normalizer"].transform(
+                self.pipeline.named_steps["tfidf"].transform(descriptions)
             )
-            # Convert to dense array for LinearSVC (handle both sparse and dense)
-            if hasattr(X_preprocessed, 'toarray'):
-                return X_preprocessed.toarray()
-            return X_preprocessed
-        else:
-            # Backward compatibility: individual components
-            # Transform descriptions to TF-IDF features
-            X = self.vectorizer.transform(descriptions)
-            
-            # Apply L2 normalization
-            X = self.normalizer.transform(X)
-            
-            # Apply feature selection
-            X = self.feature_selector.transform(X)
-            
-            # Convert to dense array for LinearSVC (handle both sparse and dense)
-            if hasattr(X, 'toarray'):
-                return X.toarray()
-            return X
+        )
+        if hasattr(X_preprocessed, "toarray"):
+            return X_preprocessed.toarray()
+        return X_preprocessed
     
     def _get_prediction_probabilities(self, X_dense: np.ndarray) -> np.ndarray:
         """
@@ -503,13 +467,12 @@ class PredictionService:
         Returns:
             Dictionary with model information including metrics and stats
         """
-        # Get number of features
-        if self._use_pipeline and self.pipeline:
-            n_features = self.pipeline.named_steps['feature_selector'].k
-        elif self.feature_selector:
-            n_features = self.feature_selector.k
-        else:
-            n_features = 0
+        # Get number of features from pipeline
+        n_features = (
+            self.pipeline.named_steps["feature_selector"].k
+            if self.pipeline
+            else 0
+        )
         
         info = {
             "model_name": Path(self.model_path).name if self.model_path else "unknown",
