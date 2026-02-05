@@ -217,10 +217,9 @@ curl -X POST "http://localhost:8000/predict/batch" \
 │   │   └── model.py      <- Model building utilities
 │   └── plots.py      <- Visualization utilities
 │
-├── models/           <- Trained models and preprocessors
-│   ├── linearsvc.joblib
-│   ├── tfidf_vectorizer.joblib
-│   ├── genre_binarizer.joblib
+├── models/           <- Trained models
+│   ├── linearsvc.joblib      <- Full pipeline (tfidf → normalizer → feature_selector → classifier)
+│   ├── genre_binarizer.joblib <- Label encoding/decoding
 │   ├── metrics_linearsvc.json
 │   └── linearsvc_parameters.json
 │
