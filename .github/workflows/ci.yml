@@ -166,30 +166,20 @@ jobs:
         shell: bash -l {0}
         run: |
           echo "Checking for model artifacts..."
-          # Check for linearsvc.joblib (current model) or model.joblib (default name)
+          # Check for pipeline (linearsvc.joblib) and genre_binarizer.joblib
           if [ -f "models/linearsvc.joblib" ] || [ -f "models/model.joblib" ]; then
-            echo "✓ Model file created successfully"
+            echo "✓ Pipeline model created successfully"
             ls -lh models/*.joblib
           else
-            echo "✗ Model file not found (expected linearsvc.joblib or model.joblib)"
+            echo "✗ Pipeline not found (expected linearsvc.joblib or model.joblib)"
             ls -la models/ || echo "Models directory does not exist"
             exit 1
           fi
           
-          # Check for required preprocessor files
-          required_files=("tfidf_vectorizer.joblib" "genre_binarizer.joblib")
-          missing_files=()
-          for file in "${required_files[@]}"; do
-            if [ ! -f "models/$file" ]; then
-              missing_files+=("$file")
-            fi
-          done
-          
-          if [ ${#missing_files[@]} -eq 0 ]; then
-            echo "✓ All preprocessor files created successfully"
+          if [ -f "models/genre_binarizer.joblib" ]; then
+            echo "✓ Genre binarizer created successfully"
           else
-            echo "✗ Missing preprocessor files: ${missing_files[*]}"
-            ls -la models/ || echo "Models directory does not exist"
+            echo "✗ genre_binarizer.joblib not found"
             exit 1
           fi
 
