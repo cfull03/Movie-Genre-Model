@@ -35,7 +35,6 @@ from descriptions.modeling.model import build_model, build_pipeline, get_model_n
 from descriptions.modeling.preprocess import (
     _generate_descriptions,
     _generate_targets,
-    save_preprocessors,
 )
 
 app = typer.Typer()
@@ -71,9 +70,9 @@ def split_data(
     # Load MultiLabelBinarizer
     if mlb is None:
         try:
-            from descriptions.modeling.preprocess import load_preprocessors
+            from descriptions.modeling.model import load_model
 
-            _, mlb, _, _ = load_preprocessors()
+            mlb = load_model("genre_binarizer")
             logger.info("Loaded MultiLabelBinarizer from saved model")
         except FileNotFoundError:
             raise FileNotFoundError(
@@ -519,28 +518,21 @@ def main(
             if hasattr(X_train_transformed, 'toarray'):
                 X_train_transformed = X_train_transformed.toarray()
 
-            # Save pipeline and mlb separately
+            # Save pipeline and mlb only (pipeline contains tfidf, normalizer, feature_selector, classifier)
             logger.info("=" * 70)
             logger.info("Saving trained pipeline and label encoder")
             logger.info("=" * 70)
             save_model(pipeline, final_model_path)
             logger.success(f"✓ Pipeline saved to {final_model_path}")
-            
-            # Save mlb separately (for label encoding/decoding)
-            from descriptions.modeling.preprocess import save_preprocessors
-            # Save only mlb (vectorizer, normalizer, feature_selector are in pipeline)
+
             save_model(mlb, "genre_binarizer")
             logger.success("✓ MultiLabelBinarizer saved (for label encoding/decoding)")
 
-            # For backward compatibility, also save individual components
-            vectorizer = pipeline.named_steps['tfidf']
-            normalizer = pipeline.named_steps['normalizer']
-            feature_selector = pipeline.named_steps['feature_selector']
-            save_preprocessors(vectorizer, mlb, normalizer, feature_selector)
-            logger.success("✓ Individual preprocessors saved (for backward compatibility)")
-
-            # Log preprocessors as MLflow artifacts (improved tracking)
+            # Log preprocessors as MLflow artifacts (for tracking only; extracted from pipeline)
             logger.info("Logging preprocessors as MLflow artifacts...")
+            vectorizer = pipeline.named_steps["tfidf"]
+            normalizer = pipeline.named_steps["normalizer"]
+            feature_selector = pipeline.named_steps["feature_selector"]
             log_preprocessors_as_artifacts(
                 vectorizer, mlb, normalizer, feature_selector, artifact_dir="preprocessors"
             )
@@ -569,6 +561,13 @@ def main(
                     ),
                 }
                 logger.success("✓ Training metrics calculated")
+
+                # Save metrics to models directory
+                metrics_path = MODELS_DIR / f"metrics_{model_name}.json"
+                metrics_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(metrics_path, "w") as f:
+                    json.dump(train_metrics, f, indent=2)
+                logger.success(f"✓ Metrics saved to {metrics_path}")
             except Exception as e:
                 logger.warning(f"Could not calculate training metrics: {e}")
                 train_metrics = None
