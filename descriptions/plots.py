@@ -22,7 +22,6 @@ import typer
 from descriptions.config import FIGURES_DIR, INTERIM_DATA_DIR, MODELS_DIR
 from descriptions.dataset import load_interim, load_processed
 from descriptions.modeling.model import get_model_name, load_model
-from descriptions.modeling.preprocess import load_preprocessors
 from descriptions.modeling.train import prepare_features_and_labels, split_data
 
 app = typer.Typer()
@@ -543,9 +542,7 @@ def main(
         logger.debug("No model path provided, searching for default model...")
         model_files = list(MODELS_DIR.glob("*.joblib"))
         model_files = [
-            f
-            for f in model_files
-            if f.name not in {"tfidf_vectorizer.joblib", "genre_binarizer.joblib"}
+            f for f in model_files if f.name != "genre_binarizer.joblib"
         ]
         if not model_files:
             raise FileNotFoundError(f"No model found in {MODELS_DIR}. Please train a model first.")
@@ -574,22 +571,41 @@ def main(
         logger.info(f"Loading interim data from {data_path}...")
         data = load_interim(data_path)
         logger.success(f"✓ Interim data loaded successfully: {len(data)} samples")
-        logger.info("Loading saved preprocessors...")
-        vectorizer, mlb = load_preprocessors()
-        logger.success("✓ Preprocessors loaded successfully")
-        logger.info("Transforming data using saved preprocessors...")
-        X, y_true, _, _ = prepare_features_and_labels(data, vectorizer=vectorizer, mlb=mlb)
+        logger.info("Extracting preprocessors from pipeline and loading genre binarizer...")
+        vectorizer = model.named_steps["tfidf"]
+        normalizer = model.named_steps["normalizer"]
+        feature_selector = model.named_steps["feature_selector"]
+        mlb = load_model("genre_binarizer")
+        logger.success("✓ Preprocessors extracted from pipeline")
+        logger.info("Transforming data using pipeline preprocessors...")
+        X, y_true, _, _, _, _ = prepare_features_and_labels(
+            data,
+            vectorizer=vectorizer,
+            mlb=mlb,
+            normalizer=normalizer,
+            feature_selector=feature_selector,
+        )
         logger.success(
             f"✓ Data transformed: {X.shape[0]} samples, {X.shape[1]} features, {y_true.shape[1]} labels"
         )
 
-    # Make predictions
+    # Make predictions (X is pre-transformed features; use classifier step if Pipeline)
     logger.info("=" * 70)
     logger.info("Making predictions")
     logger.info("=" * 70)
     logger.info("Generating prediction probabilities...")
     X_array = X.values if isinstance(X, pd.DataFrame) else X
-    y_proba = model.predict_proba(X_array)
+    if hasattr(model, "named_steps") and "classifier" in model.named_steps:
+        classifier = model.named_steps["classifier"]
+    else:
+        classifier = model
+    if hasattr(classifier, "predict_proba"):
+        y_proba = classifier.predict_proba(X_array)
+    else:
+        from scipy.special import expit
+
+        y_scores = classifier.decision_function(X_array)
+        y_proba = expit(y_scores)
     logger.info(f"Applying threshold={threshold} to generate binary predictions...")
     y_pred_binary = (y_proba >= threshold).astype(int)
     logger.success(f"✓ Predictions generated: {len(y_pred_binary)} samples")
